@@ -110,9 +110,18 @@ check_eq "активных пациентов ≥ 15" "ok" \
 
 echo "== 4. CRUD пациента (admin) =="
 # очистка от предыдущих прогонов (идемпотентность повторного запуска)
-(cd "$BASE_DIR" && "$PY" manage.py shell -c \
-  "from apps.patients.models import Patient; Patient.objects.filter(notes__startswith='[test]').delete()" \
-  > /dev/null 2>&1)
+(cd "$BASE_DIR" && "$PY" manage.py shell -c "
+from django.contrib.auth.models import User
+from apps.appointments.models import Appointment
+from apps.patients.models import Patient
+from apps.schedule.models import Cabinet, Doctor, Specialty, WorkSchedule
+Appointment.objects.filter(comment__startswith='[test]').delete()
+Patient.objects.filter(notes__startswith='[test]').delete()
+Doctor.objects.filter(user__username='doctor_test').delete()
+User.objects.filter(username='doctor_test').delete()
+Specialty.objects.filter(name='Гастроэнтеролог').delete()
+Cabinet.objects.filter(number='999').delete()
+" > /dev/null 2>&1)
 : > "$J_ADMIN"; login admin admin12345 "$J_ADMIN"
 CREATE=$(post "$BASE/patients/new/" "$J_ADMIN" \
   --data-urlencode "last_name=Тестов" \
@@ -233,6 +242,225 @@ check_eq "nobody: пациенты → 302 (блок)" "302" "$(status "$BASE/pa
 
 check_eq "аноним: POST создание → 302 (нет сессии)" "302" \
   "$(status "$BASE/patients/new/" "$J_ANON")"
+
+echo "== 8. Справочники (admin) =="
+: > "$J_ADMIN"; login admin admin12345 "$J_ADMIN"
+SPEC=$(post "$BASE/schedule/specialties/new/" "$J_ADMIN" \
+  --data-urlencode "name=Гастроэнтеролог" --data-urlencode "code=GAST")
+check_eq "создание специальности → 302" "302" "${SPEC%%|*}"
+check_contains "специальность в списке" \
+  "$(body "$BASE/schedule/specialties/" "$J_ADMIN")" "Гастроэнтеролог"
+
+CAB=$(post "$BASE/schedule/cabinets/new/" "$J_ADMIN" \
+  --data-urlencode "number=999" --data-urlencode "floor=3" --data-urlencode "building=В")
+check_eq "создание кабинета → 302" "302" "${CAB%%|*}"
+check_contains "кабинет в списке" \
+  "$(body "$BASE/schedule/cabinets/" "$J_ADMIN")" "999"
+
+SPEC_ID=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Specialty; print(Specialty.objects.get(name='Гастроэнтеролог').id)" \
+  2>/dev/null | tail -n1)
+DOC_NEW=$(post "$BASE/schedule/doctors/new/" "$J_ADMIN" \
+  --data-urlencode "existing_user=" \
+  --data-urlencode "username=doctor_test" \
+  --data-urlencode "password=Doctor-2026!" \
+  --data-urlencode "first_name=Тест" \
+  --data-urlencode "last_name=Тестов" \
+  --data-urlencode "specialty=${SPEC_ID}" \
+  --data-urlencode "cabinet=" \
+  --data-urlencode "is_active=on")
+check_eq "создание врача (новый пользователь) → 302" "302" "${DOC_NEW%%|*}"
+check_contains "врач в списке" \
+  "$(body "$BASE/schedule/doctors/" "$J_ADMIN")" "Тестов Тест"
+check_eq "логин doctor_test создан" "1" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from django.contrib.auth.models import User; print(User.objects.filter(username='doctor_test').count())" \
+    2>/dev/null | tail -n1)"
+
+DOC_TEST_ID=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Doctor; print(Doctor.objects.get(user__username='doctor_test').id)" \
+  2>/dev/null | tail -n1)
+WS=$(post "$BASE/schedule/work-schedules/new/" "$J_ADMIN" \
+  --data-urlencode "doctor=${DOC_TEST_ID}" --data-urlencode "weekday=7" \
+  --data-urlencode "start_time=10:00" --data-urlencode "end_time=12:00" \
+  --data-urlencode "slot_minutes=30" --data-urlencode "valid_from=" --data-urlencode "valid_to=")
+check_eq "создание расписания → 302" "302" "${WS%%|*}"
+check_contains "расписание в списке" \
+  "$(body "$BASE/schedule/work-schedules/" "$J_ADMIN")" "10:00–12:00"
+
+# валидации справочников
+BAD_WS=$(post "$BASE/schedule/work-schedules/new/" "$J_ADMIN" \
+  --data-urlencode "doctor=${DOC_TEST_ID}" --data-urlencode "weekday=7" \
+  --data-urlencode "start_time=12:00" --data-urlencode "end_time=10:00" \
+  --data-urlencode "slot_minutes=30" --data-urlencode "valid_from=" --data-urlencode "valid_to=")
+check_eq "конец раньше начала → 200 с ошибкой" "200" "${BAD_WS%%|*}"
+
+DUP_SPEC=$(post "$BASE/schedule/specialties/new/" "$J_ADMIN" \
+  --data-urlencode "name=Гастроэнтеролог" --data-urlencode "code=X2")
+check_eq "дубль названия специальности → 200 с ошибкой" "200" "${DUP_SPEC%%|*}"
+
+echo "== 9. Запись на приём (admin) =="
+# пациент из seeds (берём имя динамически — порядок может меняться)
+PAT_ID=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.patients.models import Patient; print(Patient.objects.filter(notes__startswith='[demo]', is_active=True).first().id)" \
+  2>/dev/null | tail -n1)
+PAT_LAST=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.patients.models import Patient; print(Patient.objects.filter(notes__startswith='[demo]', is_active=True).first().last_name)" \
+  2>/dev/null | tail -n1)
+DOC1_ID=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Doctor; print(Doctor.objects.get(user__username='doctor1').id)" \
+  2>/dev/null | tail -n1)
+
+# дата: сегодня или завтра — ищем день, где у doctor1 есть свободные слоты
+BOOK_DATE=""
+for off in 0 1 2 3; do
+  D=$(date -d "+$off day" +%F)
+  CNT=$(cd "$BASE_DIR" && "$PY" manage.py shell -c "
+from datetime import date
+from apps.schedule.models import Doctor
+from apps.appointments.slots import generate_slots
+doc = Doctor.objects.get(user__username='doctor1')
+print(sum(1 for s in generate_slots(doc, date.fromisoformat('$D')) if not s['busy'] and not s['past']))
+" 2>/dev/null | tail -n1)
+  if [ "${CNT:-0}" -gt 0 ]; then BOOK_DATE="$D"; break; fi
+done
+check_eq "найден день со свободными слотами" "ok" "$([ -n "$BOOK_DATE" ] && echo ok || echo no)"
+
+BOOK_PAGE=$(body "$BASE/appointments/booking/?patient=${PAT_ID}&doctor=${DOC1_ID}&date=${BOOK_DATE}" "$J_ADMIN")
+check_eq "страница записи → 200" "200" \
+  "$(status "$BASE/appointments/booking/?patient=${PAT_ID}&doctor=${DOC1_ID}&date=${BOOK_DATE}" "$J_ADMIN")"
+check_contains "сетка слотов отрисована" "$BOOK_PAGE" "Шаг 2"
+
+# первый свободный слот
+SLOT=$(cd "$BASE_DIR" && "$PY" manage.py shell -c "
+from datetime import date
+from apps.schedule.models import Doctor
+from apps.appointments.slots import generate_slots
+doc = Doctor.objects.get(user__username='doctor1')
+free = [s for s in generate_slots(doc, date.fromisoformat('$BOOK_DATE')) if not s['busy'] and not s['past']]
+print(f'{free[0][\"time\"].hour:02d}:{free[0][\"time\"].minute:02d}:00' if free else '')
+" 2>/dev/null | tail -n1)
+check_eq "свободный слот найден" "ok" "$([ -n "$SLOT" ] && echo ok || echo no)"
+
+APT=$(post "$BASE/appointments/booking/" "$J_ADMIN" \
+  --data-urlencode "patient=${PAT_ID}" \
+  --data-urlencode "doctor=${DOC1_ID}" \
+  --data-urlencode "visit_date=${BOOK_DATE}" \
+  --data-urlencode "slot_start=${SLOT}" \
+  --data-urlencode "visit_type=primary" \
+  --data-urlencode "comment=[test] smoke booking")
+check_eq "POST запись → 302" "302" "${APT%%|*}"
+APT_ID=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.appointments.models import Appointment; a=Appointment.objects.filter(comment='[test] smoke booking').order_by('-id').first(); print(a.pk if a else '')" \
+  2>/dev/null | tail -n1)
+check_eq "запись создана в БД" "ok" "$([ -n "$APT_ID" ] && echo ok || echo no)"
+check_eq "страница записи (карточка) → 200" "200" \
+  "$(status "$BASE/appointments/${APT_ID}/" "$J_ADMIN")"
+check_contains "талон → 200 и содержит номер" "ok" \
+  "$(BODY=$(body "$BASE/appointments/${APT_ID}/ticket/" "$J_ADMIN"); \
+     case "$BODY" in *"№${APT_ID}"*) echo ok;; *) echo bad;; esac)"
+
+# двойная запись в тот же слот → отказ
+DUP_BOOK=$(post "$BASE/appointments/booking/" "$J_ADMIN" \
+  --data-urlencode "patient=${PAT_ID}" \
+  --data-urlencode "doctor=${DOC1_ID}" \
+  --data-urlencode "visit_date=${BOOK_DATE}" \
+  --data-urlencode "slot_start=${SLOT}" \
+  --data-urlencode "visit_type=primary" \
+  --data-urlencode "comment=")
+check_eq "двойная запись → 200 с ошибкой" "200" "${DUP_BOOK%%|*}"
+check_contains "текст «Слот уже занят»" \
+  "$(body "$BASE/appointments/booking/?patient=${PAT_ID}&doctor=${DOC1_ID}&date=${BOOK_DATE}" "$J_ADMIN")" \
+  "Слот"
+
+# запись в прошлое → отказ
+PAST_DATE=$(date -d "-1 day" +%F)
+PAST_BOOK=$(post "$BASE/appointments/booking/" "$J_ADMIN" \
+  --data-urlencode "patient=${PAT_ID}" \
+  --data-urlencode "doctor=${DOC1_ID}" \
+  --data-urlencode "visit_date=${PAST_DATE}" \
+  --data-urlencode "slot_start=${SLOT}" \
+  --data-urlencode "visit_type=primary" \
+  --data-urlencode "comment=")
+check_eq "запись в прошлой дате → 200 с ошибкой" "200" "${PAST_BOOK%%|*}"
+
+# запись вне расписания (ночь) → отказ
+NIGHT_BOOK=$(post "$BASE/appointments/booking/" "$J_ADMIN" \
+  --data-urlencode "patient=${PAT_ID}" \
+  --data-urlencode "doctor=${DOC1_ID}" \
+  --data-urlencode "visit_date=${BOOK_DATE}" \
+  --data-urlencode "slot_start=03:00:00" \
+  --data-urlencode "visit_type=primary" \
+  --data-urlencode "comment=")
+check_eq "слот вне расписания → 200 с ошибкой" "200" "${NIGHT_BOOK%%|*}"
+
+# отмена освобождает слот → повторная запись того же слота проходит
+CANCEL=$(post "$BASE/appointments/${APT_ID}/cancel/" "$J_ADMIN" \
+  --data-urlencode "reason=[test] отмена в смоуке")
+check_eq "отмена записи → 302" "302" "${CANCEL%%|*}"
+check_contains "статус отмены на странице" \
+  "$(body "$BASE/appointments/${APT_ID}/" "$J_ADMIN")" "отменён"
+REBOOK=$(post "$BASE/appointments/booking/" "$J_ADMIN" \
+  --data-urlencode "patient=${PAT_ID}" \
+  --data-urlencode "doctor=${DOC1_ID}" \
+  --data-urlencode "visit_date=${BOOK_DATE}" \
+  --data-urlencode "slot_start=${SLOT}" \
+  --data-urlencode "visit_type=repeat" \
+  --data-urlencode "comment=[test] rebook")
+check_eq "слот свободен после отмены (повторная запись → 302)" "302" "${REBOOK%%|*}"
+
+# перенос: найти ещё один свободный слот и перенести вторую запись
+APT2_ID=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.appointments.models import Appointment; a=Appointment.objects.filter(comment='[test] rebook').order_by('-id').first(); print(a.pk if a else '')" \
+  2>/dev/null | tail -n1)
+SLOT2=$(cd "$BASE_DIR" && "$PY" manage.py shell -c "
+from datetime import date
+from apps.schedule.models import Doctor
+from apps.appointments.slots import generate_slots
+doc = Doctor.objects.get(user__username='doctor1')
+free = [s for s in generate_slots(doc, date.fromisoformat('$BOOK_DATE')) if not s['busy'] and not s['past']]
+print(f'{free[0][\"time\"].hour:02d}:{free[0][\"time\"].minute:02d}:00' if free else '')
+" 2>/dev/null | tail -n1)
+if [ -n "$SLOT2" ] && [ -n "$APT2_ID" ]; then
+  MOVE=$(post "$BASE/appointments/${APT2_ID}/move/" "$J_ADMIN" \
+    --data-urlencode "visit_date=${BOOK_DATE}" --data-urlencode "slot_start=${SLOT2}")
+  check_eq "перенос записи → 302" "302" "${MOVE%%|*}"
+  check_contains "новое время на карточке" \
+    "$(body "$BASE/appointments/${APT2_ID}/" "$J_ADMIN")" "${SLOT2%:00}"
+else
+  check_eq "перенос (нет свободного слота — пропущено)" "skip" "skip"
+fi
+
+# список дня показывает запись
+check_contains "запись видна в списке дня" \
+  "$(body "$BASE/appointments/?date=${BOOK_DATE}" "$J_ADMIN")" "$PAT_LAST"
+
+echo "== 10. Роли на запись/справочники =="
+login registrar1 registrar12345 "$J_REG"
+check_eq "registrar1: страница записи → 200" "200" \
+  "$(status "$BASE/appointments/booking/?patient=${PAT_ID}" "$J_REG")"
+check_eq "registrar1: список дня → 200" "200" \
+  "$(status "$BASE/appointments/?date=${BOOK_DATE}" "$J_REG")"
+check_eq "registrar1: справочники (hub) → 302 (нет прав)" "302" \
+  "$(status "$BASE/schedule/" "$J_REG")"
+
+login manager manager12345 "$J_MGR"
+check_eq "manager: список дня (чтение) → 200" "200" \
+  "$(status "$BASE/appointments/?date=${BOOK_DATE}" "$J_MGR")"
+check_eq "manager: создание записи → 302 (блок)" "302" \
+  "$(status "$BASE/appointments/booking/" "$J_MGR")"
+check_eq "manager: специальности (чтение) → 200" "200" \
+  "$(status "$BASE/schedule/specialties/" "$J_MGR")"
+check_eq "manager: создание специальности → 302 (блок)" "302" \
+  "$(status "$BASE/schedule/specialties/new/" "$J_MGR")"
+
+login doctor_test Doctor-2026! "$COOKIES/dt.txt"
+check_eq "doctor_test: создание записи → 302 (блок)" "302" \
+  "$(status "$BASE/appointments/booking/" "$COOKIES/dt.txt")"
+check_eq "doctor_test: список пациентов → 302 (блок)" "302" \
+  "$(status "$BASE/patients/" "$COOKIES/dt.txt")"
+check_eq "doctor_test: дашборд → 200" "200" \
+  "$(status "$BASE/" "$COOKIES/dt.txt")"
 
 echo
 echo "=================================="

@@ -21,9 +21,11 @@
   <div class="col-md-4">
     <div class="card text-center shadow-sm">
       <div class="card-body">
-        <div class="display-6">—</div>
+        <div class="display-6">{{ today_appointments }}</div>
         <div class="text-muted">Записей на сегодня</div>
-        <span class="btn btn-sm btn-outline-secondary mt-2 disabled">Скоро (этап 2)</span>
+        {% if perms.appointments.view_appointment %}
+        <a href="{% url 'appointments:day_list' %}" class="btn btn-sm btn-outline-primary mt-2">К записям</a>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -41,6 +43,12 @@
 {% if perms.patients.add_patient %}
 <div class="mt-4">
   <a href="{% url 'patients:patient_create' %}" class="btn btn-primary">+ Регистрация пациента</a>
+  {% if perms.appointments.add_appointment %}
+  <a href="{% url 'appointments:booking' %}" class="btn btn-success">+ Запись на приём</a>
+  {% endif %}
+  {% if perms.schedule.view_specialty %}
+  <a href="{% url 'schedule:hub' %}" class="btn btn-outline-primary">Справочники</a>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}

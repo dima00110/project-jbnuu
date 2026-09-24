@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Записи на {{ date|date:"d.m.Y" }} — Регистратура{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h3 class="mb-0">Записи на {{ date|date:"d.m.Y" }}</h3>
+  {% if can_write %}
+  <a href="{% url 'appointments:booking' %}" class="btn btn-primary">+ Новая запись</a>
+  {% endif %}
+</div>
+
+<form method="get" class="mb-3">
+  <div class="d-flex gap-2 flex-wrap align-items-end">
+    <div>
+      <label class="form-label small mb-1">Дата</label>
+      <input type="date" name="date" value="{{ date|date:'Y-m-d' }}" class="form-control">
+    </div>
+    <div>
+      <label class="form-label small mb-1">Врач</label>
+      <select name="doctor" class="form-select">
+        <option value="">— все —</option>
+        {% for d in doctors %}
+        <option value="{{ d.pk }}" {% if request.GET.doctor == d.pk|stringformat:'s' %}selected{% endif %}>
+          {{ d.full_name }} ({{ d.specialty }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-outline-primary">Показать</button>
+    <a class="btn btn-outline-secondary" href="?date={{ today|date:'Y-m-d' }}">Сегодня</a>
+    <a class="btn btn-outline-secondary btn-sm" href="?date={{ prev_date|date:'Y-m-d' }}">← {{ prev_date|date:"d.m" }}</a>
+    <a class="btn btn-outline-secondary btn-sm" href="?date={{ next_date|date:'Y-m-d' }}">{{ next_date|date:"d.m" }} →</a>
+  </div>
+</form>
+
+<div class="card shadow-sm"><div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle">
+    <thead class="table-light">
+      <tr><th>Время</th><th>Пациент</th><th>Врач</th><th>Тип</th><th>Статус</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for a in appointments %}
+      <tr>
+        <td class="fw-semibold">{{ a.slot_start|time:"H:i" }}</td>
+        <td>{{ a.patient.full_name }}</td>
+        <td>{{ a.doctor.full_name }} <span class="text-muted small">({{ a.doctor.specialty }})</span></td>
+        <td>{{ a.get_visit_type_display }}</td>
+        <td>
+          {% if a.status == 'booked' %}<span class="badge bg-primary">записан</span>
+          {% elif a.status == 'confirmed' %}<span class="badge bg-info text-dark">подтверждён</span>
+          {% elif a.status == 'cancelled_patient' or a.status == 'cancelled_registrar' %}<span class="badge bg-danger">отменён</span>
+          {% elif a.status == 'no_show' %}<span class="badge bg-warning text-dark">неявка</span>
+          {% elif a.status == 'done' %}<span class="badge bg-success">завершён</span>{% endif %}
+        </td>
+        <td class="text-end">
+        <a href="{% url 'appointments:appointment_detail' a.pk %}" class="btn btn-sm btn-outline-primary">Открыть</a>
+        <a href="{% url 'appointments:appointment_ticket' a.pk %}" class="btn btn-sm btn-outline-secondary">Талон</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="text-center text-muted py-4">
+        На эту дату записей нет.
+        {% if can_write %}<a href="{% url 'appointments:booking' %}?date={{ date|date:'Y-m-d' }}">Записать пациента</a>{% endif %}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Перенос записи №{{ appt.pk }} — Регистратура{% endblock %}
+
+{% block content %}
+<h3 class="mb-1">Перенос записи №{{ appt.pk }}</h3>
+<p class="text-muted">
+  {{ appt.patient.full_name }} → {{ appt.doctor.full_name }}<br>
+  Сейчас: <strong>{{ appt.visit_date|date:"d.m.Y" }}, {{ appt.slot_start|time:"H:i" }}</strong>
+</p>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header">Новая дата</div>
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label small mb-1">Дата</label>
+        <input type="date" name="date" value="{{ date|date:'Y-m-d' }}"
+               min="{{ today|date:'Y-m-d' }}" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <button class="btn btn-outline-primary">Показать слоты</button>
+      </div>
+      <div class="col-md-5 text-end">
+        <a href="{% url 'appointments:appointment_detail' appt.pk %}" class="btn btn-outline-secondary">Отмена</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header">Свободные слоты на {{ date|date:"d.m.Y (l)" }}</div>
+  <div class="card-body">
+    {% if not slots %}
+    <p class="text-muted mb-0">Слотов нет (выходной или расписания нет).</p>
+    {% else %}
+    <div class="d-flex flex-wrap gap-2">
+      {% for s in slots %}
+        {% if s.past %}
+          <span class="btn btn-outline-secondary disabled">{{ s.time|time:"H:i" }}</span>
+        {% elif s.busy %}
+          <span class="btn btn-outline-danger disabled">{{ s.time|time:"H:i" }} ✕</span>
+        {% else %}
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="visit_date" value="{{ date|date:'Y-m-d' }}">
+            <input type="hidden" name="slot_start" value="{{ s.time|time:'H:i:s' }}">
+            <button class="btn btn-success">{{ s.time|time:"H:i" }}</button>
+          </form>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if form.errors %}
+    <div class="alert alert-danger mt-3 mb-0">
+      {% for field, errors in form.errors.items %}
+        {% for e in errors %}<div>{{ e }}</div>{% endfor %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

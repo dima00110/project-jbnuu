@@ -40,6 +40,8 @@ INSTALLED_APPS = [
     # Локальные приложения
     'apps.accounts.apps.AccountsConfig',
     'apps.patients.apps.PatientsConfig',
+    'apps.schedule.apps.ScheduleConfig',
+    'apps.appointments.apps.AppointmentsConfig',
 ]
 
 MIDDLEWARE = [

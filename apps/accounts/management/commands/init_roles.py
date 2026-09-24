@@ -4,45 +4,58 @@ from django.contrib.auth.models import Group, Permission
 from apps.accounts.roles import Roles
 
 
-# Коды permissions моделей пациентов (этап 1)
+# Коды permissions по приложениям
 PATIENT_PERMS = {
-    'add_patient',
-    'change_patient',
-    'view_patient',
-    'delete_patient',
+    'add_patient', 'change_patient', 'view_patient', 'delete_patient',
 }
 POLICY_PERMS = {
-    'add_insurancepolicy',
-    'change_insurancepolicy',
-    'view_insurancepolicy',
-    'delete_insurancepolicy',
+    'add_insurancepolicy', 'change_insurancepolicy',
+    'view_insurancepolicy', 'delete_insurancepolicy',
 }
+APPOINTMENT_PERMS = {
+    'add_appointment', 'change_appointment', 'view_appointment',
+}
+SCHEDULE_PERMS = {
+    'add_specialty', 'change_specialty', 'view_specialty', 'delete_specialty',
+    'add_cabinet', 'change_cabinet', 'view_cabinet', 'delete_cabinet',
+    'add_doctor', 'change_doctor', 'view_doctor',
+    'add_workschedule', 'change_workschedule', 'view_workschedule',
+    'delete_workschedule',
+}
+
+ALL_CODES = PATIENT_PERMS | POLICY_PERMS | APPOINTMENT_PERMS | SCHEDULE_PERMS
 
 
 class Command(BaseCommand):
-    help = 'Создаёт группы ролей (регистратор, администратор, врач, руководство) и назначает права.'
+    help = 'Синхронизирует группы ролей с актуальным набором прав.'
 
     def handle(self, *args, **options):
         grants = {
-            Roles.REGISTRAR: PATIENT_PERMS | POLICY_PERMS,
-            Roles.ADMINISTRATOR: PATIENT_PERMS | POLICY_PERMS,
-            Roles.DOCTOR: set(),            # этап 1: права врачей добавим с кабинетом врача
-            Roles.MANAGEMENT: {'view_patient', 'view_insurancepolicy'},
+            Roles.REGISTRAR: PATIENT_PERMS | POLICY_PERMS | APPOINTMENT_PERMS,
+            Roles.ADMINISTRATOR: (
+                PATIENT_PERMS | POLICY_PERMS | APPOINTMENT_PERMS | SCHEDULE_PERMS
+            ),
+            Roles.DOCTOR: {'view_appointment'},  # этап 3 расширит
+            Roles.MANAGEMENT: {
+                'view_patient', 'view_insurancepolicy',
+                'view_appointment', 'view_specialty',
+                'view_cabinet', 'view_doctor', 'view_workschedule',
+            },
         }
 
-        all_perms = Permission.objects.filter(
-            codename__in=PATIENT_PERMS | POLICY_PERMS,
-        )
+        all_perms = Permission.objects.filter(codename__in=ALL_CODES)
+        known = {p.codename for p in all_perms}
 
         for role, codenames in grants.items():
             group, created = Group.objects.get_or_create(name=role)
-            # Синхронизируем права: сначала снимаем все «наши», затем вешаем нужные
             group.permissions.remove(*all_perms)
             granted = [p for p in all_perms if p.codename in codenames]
+            unknown = codenames - known
             group.permissions.add(*granted)
             state = 'создана' if created else 'обновлена'
-            self.stdout.write(self.style.SUCCESS(
-                f'Группа «{role}» {state}, прав: {len(granted)}'
-            ))
+            line = f'Группа «{role}» {state}, прав: {len(granted)}'
+            if unknown:
+                line += f' (не найдено: {", ".join(sorted(unknown))})'
+            self.stdout.write(self.style.SUCCESS(line))
 
         self.stdout.write(self.style.SUCCESS('Роли готовы.'))

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}Запись на приём — Регистратура{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">Запись на приём</h3>
+
+{% if not patient %}
+<div class="alert alert-warning">
+  Сначала выберите пациента: <a href="{% url 'patients:patient_list' %}">список пациентов</a>
+  или зарегистрируйте нового.
+</div>
+{% else %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header d-flex justify-content-between">
+    <span>Пациент</span>
+    <a href="{% url 'patients:patient_detail' patient.pk %}" class="small">карточка →</a>
+  </div>
+  <div class="card-body py-2">
+    <strong>{{ patient.full_name }}</strong>,
+    {{ patient.birth_date|date:"d.m.Y" }} ({{ patient.age }} лет)
+    {% if patient.phone %} · {{ patient.phone }}{% endif %}
+  </div>
+</div>
+
+<!-- Фильтры: специальность → врач → дата -->
+<div class="card shadow-sm mb-3">
+  <div class="card-header">Шаг 1. Врач и дата</div>
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <input type="hidden" name="patient" value="{{ patient.pk }}">
+      <div class="col-md-3">
+        <label class="form-label small mb-1">Специальность</label>
+        <select name="specialty" class="form-select" onchange="this.form.submit()">
+          <option value="">— любая —</option>
+          {% for s in specialties %}
+          <option value="{{ s.pk }}" {% if selected_specialty == s.pk|stringformat:'s' %}selected{% endif %}>
+            {{ s.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small mb-1">Врач</label>
+        <select name="doctor" class="form-select">
+          <option value="">— выберите —</option>
+          {% for d in doctors %}
+          <option value="{{ d.pk }}" {% if selected_doctor == d.pk|stringformat:'s' %}selected{% endif %}>
+            {{ d.full_name }} ({{ d.specialty }}{% if d.cabinet %}, каб. {{ d.cabinet.number }}{% endif %})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small mb-1">Дата</label>
+        <input type="date" name="date" value="{{ date|date:'Y-m-d' }}"
+               min="{{ today|date:'Y-m-d' }}" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-outline-primary w-100">Показать слоты</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Шаг 2. Слоты -->
+<div class="card shadow-sm mb-3">
+  <div class="card-header">Шаг 2. Свободное время — {{ date|date:"d.m.Y (l)" }}</div>
+  <div class="card-body">
+    {% if not doctor %}
+    <p class="text-muted mb-0">Выберите врача и дату, чтобы увидеть свободные слоты.</p>
+    {% elif not slots %}
+    <p class="text-muted mb-0">На эту дату слотов нет (у врача нет расписания или это выходной).</p>
+    {% else %}
+    <div class="d-flex flex-wrap gap-2">
+      {% for s in slots %}
+        {% if s.past %}
+          <span class="btn btn-outline-secondary disabled">{{ s.time|time:"H:i" }}</span>
+        {% elif s.busy %}
+          <span class="btn btn-outline-danger disabled">{{ s.time|time:"H:i" }} ✕</span>
+        {% else %}
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="patient" value="{{ patient.pk }}">
+            <input type="hidden" name="doctor" value="{{ doctor.pk }}">
+            <input type="hidden" name="visit_date" value="{{ date|date:'Y-m-d' }}">
+            <input type="hidden" name="slot_start" value="{{ s.time|time:'H:i:s' }}">
+            <button class="btn btn-success">{{ s.time|time:"H:i" }}</button>
+          </form>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="form-text mt-2">
+      🟢 свободно · 🔴 занято · серым — прошедшее время
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Дополнительно -->
+<div class="card shadow-sm">
+  <div class="card-header">Шаг 3. Параметры записи</div>
+  <div class="card-body">
+    <form method="post" id="params-form">
+      {% csrf_token %}
+      <div class="row g-2">
+        <div class="col-md-4">
+          <label class="form-label small mb-1">Тип визита</label>
+          <select name="visit_type" class="form-select">
+            <option value="primary">Первичный</option>
+            <option value="repeat">Повторный</option>
+          </select>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label small mb-1">Комментарий</label>
+          <input type="text" name="comment" class="form-control" maxlength="200"
+                 placeholder="Необязательно">
+        </div>
+      </div>
+      <div class="form-text mt-2">
+        Тип визита и комментарий применяются к кнопке слота (Шаг 2) —
+        выберите их, затем нажмите на время.
+      </div>
+    </form>
+
+    {% if form.errors %}
+    <div class="alert alert-danger mt-3 mb-0">
+      {% for field, errors in form.errors.items %}
+        {% for e in errors %}<div>{{ e }}</div>{% endfor %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// При нажатии на слот подставляем тип визита/комментарий из «Шага 3»
+document.addEventListener('click', function (e) {
+  const btn = e.target.closest('form button.btn-success');
+  if (!btn) return;
+  const params = document.getElementById('params-form');
+  if (!params) return;
+  const vt = params.querySelector('[name=visit_type]');
+  const cm = params.querySelector('[name=comment]');
+  const hiddenVT = document.createElement('input');
+  hiddenVT.type = 'hidden'; hiddenVT.name = 'visit_type';
+  hiddenVT.value = vt ? vt.value : 'primary';
+  const hiddenCM = document.createElement('input');
+  hiddenCM.type = 'hidden'; hiddenCM.name = 'comment';
+  hiddenCM.value = cm ? cm.value : '';
+  btn.form.appendChild(hiddenVT);
+  btn.form.appendChild(hiddenCM);
+});
+</script>
+{% endblock %}

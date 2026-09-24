@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Талон №{{ appt.pk }} — Регистратура{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between mb-3 no-print">
+  <a href="{% url 'appointments:appointment_detail' appt.pk %}" class="btn btn-outline-secondary">← К записи</a>
+  <button onclick="window.print()" class="btn btn-primary">🖨 Печать</button>
+</div>
+
+<div class="card shadow-sm mx-auto" style="max-width: 380px;">
+  <div class="card-body text-center">
+    <div class="fw-bold">ГБУЗ «Поликлиника №1»</div>
+    <div class="text-muted small mb-3">Талон на приём</div>
+
+    <div class="display-5 fw-bold text-primary">№{{ appt.pk }}</div>
+    <hr>
+    <table class="table table-sm mb-0 text-start">
+      <tr><th>Пациент</th><td>{{ appt.patient.full_name }}</td></tr>
+      <tr><th>Дата</th><td class="fw-semibold">{{ appt.visit_date|date:"d.m.Y" }}</td></tr>
+      <tr><th>Время</th><td class="fw-semibold">{{ appt.slot_start|time:"H:i" }}</td></tr>
+      <tr><th>Врач</th><td>{{ appt.doctor.full_name }}</td></tr>
+      <tr><th>Специальность</th><td>{{ appt.doctor.specialty }}</td></tr>
+      <tr><th>Кабинет</th><td>{{ appt.doctor.cabinet|default:"—" }}</td></tr>
+    </table>
+    <div class="text-muted small mt-3">
+      Явиться за 10 минут до начала приёма.
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style media="print">
+  .navbar, .no-print, .messages, .btn { display: none !important; }
+  body { background: #fff; }
+  .card { border: none; box-shadow: none !important; }
+</style>
+{% endblock %}

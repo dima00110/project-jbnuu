@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Кабинеты — Регистратура{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">Кабинеты</h3>
+  {% if perms.schedule.add_cabinet %}<a href="{% url 'schedule:cabinet_create' %}" class="btn btn-primary">+ Добавить</a>{% endif %}
+</div>
+<div class="card shadow-sm"><div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle">
+    <thead class="table-light"><tr><th>Номер</th><th>Этаж</th><th>Корпус</th><th></th></tr></thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ item.number }}</td>
+        <td>{{ item.floor }}</td>
+        <td>{{ item.building|default:"—" }}</td>
+        <td class="text-end">
+          <a class="btn btn-sm btn-outline-primary" href="{% url 'schedule:cabinet_edit' item.pk %}">Изменить</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="text-center text-muted py-4">Пока нет кабинетов</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

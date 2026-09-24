@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Запись №{{ appt.pk }} — Регистратура{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">Запись №{{ appt.pk }}</h3>
+    <div class="d-flex gap-2">
+    <a href="{% url 'appointments:appointment_ticket' appt.pk %}" class="btn btn-outline-secondary">🖨 Талон</a>
+    <a href="{% url 'appointments:day_list' %}?date={{ appt.visit_date|date:'Y-m-d' }}"
+       class="btn btn-outline-secondary">← К списку дня</a>
+    {% if can_write and appt.is_active %}
+    <a href="{% url 'appointments:appointment_move' appt.pk %}" class="btn btn-primary">Перенести</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-header">Параметры</div>
+      <div class="card-body">
+        <table class="table table-sm mb-0">
+          <tr><th style="width:45%">Пациент</th>
+            <td><a href="{% url 'patients:patient_detail' appt.patient.pk %}">{{ appt.patient.full_name }}</a></td></tr>
+          <tr><th>Дата рождения</th><td>{{ appt.patient.birth_date|date:"d.m.Y" }} ({{ appt.patient.age }})</td></tr>
+          <tr><th>Телефон</th><td>{{ appt.patient.phone|default:"—" }}</td></tr>
+          <tr><th>Врач</th><td>{{ appt.doctor.full_name }}</td></tr>
+          <tr><th>Специальность</th><td>{{ appt.doctor.specialty }}</td></tr>
+          <tr><th>Кабинет</th><td>{{ appt.doctor.cabinet|default:"—" }}</td></tr>
+          <tr><th>Дата и время</th>
+            <td class="fw-semibold">{{ appt.visit_date|date:"d.m.Y" }}, {{ appt.slot_start|time:"H:i" }}</td></tr>
+          <tr><th>Тип визита</th><td>{{ appt.get_visit_type_display }}</td></tr>
+          <tr><th>Статус</th>
+            <td>
+              {% if appt.status == 'booked' %}<span class="badge bg-primary">записан</span>
+              {% elif appt.status == 'confirmed' %}<span class="badge bg-info text-dark">подтверждён</span>
+              {% elif appt.status == 'cancelled_patient' or appt.status == 'cancelled_registrar' %}<span class="badge bg-danger">отменён</span>
+              {% elif appt.status == 'no_show' %}<span class="badge bg-warning text-dark">неявка</span>
+              {% elif appt.status == 'done' %}<span class="badge bg-success">завершён</span>{% endif %}
+            </td></tr>
+          {% if appt.cancel_reason %}
+          <tr><th>Причина отмены</th><td class="text-danger">{{ appt.cancel_reason }}</td></tr>
+          {% endif %}
+          {% if appt.comment %}<tr><th>Комментарий</th><td>{{ appt.comment }}</td></tr>{% endif %}
+          <tr><th>Кто записал</th><td>{{ appt.created_by|default:"—" }}</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    {% if can_write and appt.is_active %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-header">Действия</div>
+      <div class="card-body d-flex flex-column gap-2">
+        {% if appt.status == 'booked' %}
+        <form method="post" action="{% url 'appointments:set_status' appt.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="confirm">
+          <button class="btn btn-outline-primary w-100">Подтвердить запись</button>
+        </form>
+        {% endif %}
+        {% if appt.status == 'confirmed' %}
+        <form method="post" action="{% url 'appointments:set_status' appt.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="done">
+          <button class="btn btn-outline-success w-100">Приём завершён</button>
+        </form>
+        <form method="post" action="{% url 'appointments:set_status' appt.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="noshow">
+          <button class="btn btn-outline-warning w-100">Отметить неявку</button>
+        </form>
+        {% endif %}
+
+        <hr class="my-1">
+        <form method="post" action="{% url 'appointments:appointment_cancel' appt.pk %}"
+              onsubmit="return confirm('Отменить запись?');">
+          {% csrf_token %}
+          <label class="form-label small mb-1">Причина отмены</label>
+          <input type="text" name="reason" class="form-control mb-2" maxlength="200"
+                 placeholder="Обязательно" required>
+          <button class="btn btn-outline-danger w-100">Отменить запись</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card shadow-sm">
+      <div class="card-header">История</div>
+      <div class="card-body small text-muted">
+        Создана: {{ appt.created_at|date:"d.m.Y H:i" }}
+        {% if appt.updated_at %}<br>Изменена: {{ appt.updated_at|date:"d.m.Y H:i" }}{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

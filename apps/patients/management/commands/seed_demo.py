@@ -1,30 +1,36 @@
 """
-Демо-данные для пилота: пользователи с ролями + пациенты с полисами.
+Демо-данные для пилота: пользователи с ролями, пациенты с полисами,
+справочники, расписание приёма и записи на сегодня/завтра.
 
 Использование:
     python manage.py seed_demo            # добавить недостающие демо-данные
     python manage.py seed_demo --reset    # удалить демо-данные и создать заново
 
-Пациенты помечены префиксом '[demo]' в поле notes — удаляются только они.
+Метки демо-данных: пациенты — '[demo]' в notes, записи — '[demo]' в comment.
 Пароли демо-пользователей при каждом запуске выставляются заново.
 """
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from django.contrib.auth.models import Group, User
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 
 from apps.accounts.roles import Roles
-
-from ...models import InsurancePolicy, Patient
+from apps.appointments.models import Appointment
+from apps.appointments.slots import generate_slots
+from apps.patients.models import InsurancePolicy, Patient
+from apps.schedule.models import Cabinet, Doctor, Specialty, WorkSchedule
 
 DEMO_TAG = '[demo]'
 
-# (username, password, role, full_name)
+# (username, password, role, full_name «Имя Фамилия»)
 DEMO_USERS = [
     ('registrar1', 'registrar12345', Roles.REGISTRAR, 'Ирина Смирнова'),
     ('registrar2', 'registrar12345', Roles.REGISTRAR, 'Алексей Ковалёв'),
     ('doctor1', 'doctor12345', Roles.DOCTOR, 'Дмитрий Орлов'),
+    ('doctor2', 'doctor12345', Roles.DOCTOR, 'Азиз Каримов'),
+    ('doctor3', 'doctor12345', Roles.DOCTOR, 'Дилшод Ахмедов'),
     ('manager', 'manager12345', Roles.MANAGEMENT, 'Главный сотрудник'),
 ]
 
@@ -138,9 +144,35 @@ DEMO_PATIENTS = [
     ),
 ]
 
+# Справочники
+DEMO_SPECIALTIES = [
+    ('Терапевт', 'TER'), ('Педиатр', 'PED'), ('Кардиолог', 'KAR'),
+    ('Невролог', 'NEV'), ('ЛОР', 'ENT'), ('Окулист', 'OFT'),
+]
+DEMO_CABINETS = [
+    ('101', 1, 'А'), ('102', 1, 'А'), ('103', 1, 'А'),
+    ('201', 2, 'Б'), ('202', 2, 'Б'), ('203', 2, 'Б'),
+]
+
+_MON_FRI = (1, 2, 3, 4, 5)
+
+# Врачи и их недельное расписание:
+# (username, специальность, кабинет, [(weekday, начало, конец, слот_мин), ...])
+DEMO_DOCTORS = [
+    ('doctor1', 'Терапевт', '101',
+     [(wd, '09:00', '13:00', 20) for wd in _MON_FRI] +
+     [(wd, '14:00', '17:00', 20) for wd in _MON_FRI]),
+    ('doctor2', 'Кардиолог', '103',
+     [(wd, '10:00', '14:00', 30) for wd in (1, 3, 5)]),
+    ('doctor3', 'Педиатр', '102',
+     [(2, '09:00', '12:00', 20), (4, '09:00', '12:00', 20), (6, '10:00', '13:00', 30)]),
+]
+
+DEMO_DOCTOR_USERNAMES = [d[0] for d in DEMO_DOCTORS]
+
 
 class Command(BaseCommand):
-    help = 'Создаёт демо-данные: пользователей с ролями и пациентов с полисами.'
+    help = 'Создаёт демо-данные: пользователи, пациенты, справочники, расписание, записи.'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -156,25 +188,38 @@ class Command(BaseCommand):
 
         # 2. Очистка демо-данных при --reset
         if reset:
-            deleted_patients, _ = Patient.objects.filter(
+            appts, _ = Appointment.objects.filter(
+                Q(comment__startswith=DEMO_TAG) |
+                Q(doctor__user__username__in=DEMO_DOCTOR_USERNAMES),
+            ).delete()
+            patients, _ = Patient.objects.filter(
                 notes__startswith=DEMO_TAG,
             ).delete()
-            deleted_users, _ = User.objects.filter(
+            users, _ = User.objects.filter(
                 username__in=[u[0] for u in DEMO_USERS],
             ).delete()
+            # справочники — только если на них больше никто не ссылается
+            specs, _ = Specialty.objects.filter(
+                name__in=[s[0] for s in DEMO_SPECIALTIES], doctors__isnull=True,
+            ).delete()
+            cabs, _ = Cabinet.objects.filter(
+                number__in=[c[0] for c in DEMO_CABINETS], doctors__isnull=True,
+            ).delete()
             self.stdout.write(
-                f'Удалено: пациентов — {deleted_patients}, пользователей — {deleted_users}'
+                f'Удалено: записей — {appts}, пациентов — {patients}, '
+                f'пользователей — {users}, специальностей — {specs}, кабинетов — {cabs}'
             )
 
         # 3. Пользователи с ролями
         created_users = 0
         for username, password, role, full_name in DEMO_USERS:
             parts = full_name.split()
+            # DEMO_USERS заданы как «Имя Фамилия»
             user, created = User.objects.get_or_create(
                 username=username,
                 defaults={
-                    'first_name': parts[1],
-                    'last_name': parts[0],
+                    'first_name': parts[0],
+                    'last_name': parts[1],
                     'is_staff': role == Roles.ADMINISTRATOR,
                 },
             )
@@ -207,8 +252,102 @@ class Command(BaseCommand):
                 f'Создано демо-пациентов: {created_patients}'
             ))
 
-        total = Patient.objects.filter(notes__startswith=DEMO_TAG).count()
+        # 5. Справочники
+        for name, code in DEMO_SPECIALTIES:
+            Specialty.objects.get_or_create(name=name, defaults={'code': code})
+        for number, floor, building in DEMO_CABINETS:
+            Cabinet.objects.get_or_create(
+                number=number,
+                defaults={'floor': floor, 'building': building},
+            )
+
+        # 6. Врачи (профили поверх пользователей)
+        for username, spec_name, cab_number, _slots in DEMO_DOCTORS:
+            user = User.objects.get(username=username)
+            specialty = Specialty.objects.get(name=spec_name)
+            cabinet = Cabinet.objects.get(number=cab_number)
+            Doctor.objects.get_or_create(
+                user=user,
+                defaults={'specialty': specialty, 'cabinet': cabinet, 'is_active': True},
+            )
+
+        # 7. Расписание приёма
+        schedules_created = 0
+        for username, _spec, _cab, slots in DEMO_DOCTORS:
+            doctor = Doctor.objects.get(user__username=username)
+            for weekday, start, end, slot_min in slots:
+                _s, created = WorkSchedule.objects.get_or_create(
+                    doctor=doctor, weekday=weekday,
+                    start_time=datetime.strptime(start, '%H:%M').time(),
+                    defaults={
+                        'end_time': datetime.strptime(end, '%H:%M').time(),
+                        'slot_minutes': slot_min,
+                    },
+                )
+                schedules_created += int(created)
+
+        # 8. Записи на сегодня и завтра
+        appts_created = self._seed_appointments(reset)
+
+        total_patients = Patient.objects.filter(notes__startswith=DEMO_TAG).count()
+        total_appts = Appointment.objects.filter(comment__startswith=DEMO_TAG).count()
         self.stdout.write(self.style.SUCCESS(
-            f'Готово. Демо-пациентов в БД: {total}, '
-            f'создано пользователей: {created_users}.'
+            f'Готово. Пациентов: {total_patients}, записей: {total_appts}; '
+            f'за запуск: пользователей — {created_users}, '
+            f'расписаний — {schedules_created}, записей — {appts_created}.'
         ))
+
+    def _seed_appointments(self, reset):
+        """До 3 записей на сегодня и на завтра по свободным слотам демо-врачей."""
+        if not reset and Appointment.objects.filter(
+            comment__startswith=DEMO_TAG,
+        ).exists():
+            self.stdout.write('Демо-записи уже есть — пропускаю.')
+            return 0
+
+        demo_patients = list(
+            Patient.objects.filter(notes__startswith=DEMO_TAG, is_active=True),
+        )
+        if not demo_patients:
+            return 0
+        registrar = User.objects.filter(username='registrar1').first()
+        doctors = list(
+            Doctor.objects.filter(
+                user__username__in=DEMO_DOCTOR_USERNAMES,
+            ).select_related('user', 'specialty'),
+        )
+
+        statuses = [
+            (Appointment.Status.BOOKED, ''),
+            (Appointment.Status.CONFIRMED, ''),
+            (Appointment.Status.CANCELLED_REGISTRAR, 'Демо: перенос по просьбе пациента'),
+        ]
+        created = 0
+        today = date.today()
+        for day in (today, today + timedelta(days=1)):
+            wanted = 3
+            for doctor in doctors:
+                if wanted == 0:
+                    break
+                free = [
+                    s for s in generate_slots(doctor, day)
+                    if not s['busy'] and not s['past']
+                ]
+                for slot in free:
+                    if wanted == 0:
+                        break
+                    status, reason = statuses[created % len(statuses)]
+                    Appointment.objects.create(
+                        patient=demo_patients[created % len(demo_patients)],
+                        doctor=doctor,
+                        visit_date=day,
+                        slot_start=slot['time'],
+                        status=status,
+                        cancel_reason=reason,
+                        comment=f'{DEMO_TAG} демо-запись',
+                        created_by=registrar,
+                    )
+                    created += 1
+                    wanted -= 1
+        self.stdout.write(self.style.SUCCESS(f'Создано демо-записей: {created}'))
+        return created

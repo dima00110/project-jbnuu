@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Справочники — Регистратура{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">Справочники</h3>
+<div class="row g-3">
+  <div class="col-md-3">
+    <div class="card text-center shadow-sm"><div class="card-body">
+      <div class="display-6">🎓</div>
+      <a href="{% url 'schedule:specialty_list' %}" class="btn btn-outline-primary mt-2">Специальности</a>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center shadow-sm"><div class="card-body">
+      <div class="display-6">🚪</div>
+      <a href="{% url 'schedule:cabinet_list' %}" class="btn btn-outline-primary mt-2">Кабинеты</a>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center shadow-sm"><div class="card-body">
+      <div class="display-6">👨‍⚕️</div>
+      <a href="{% url 'schedule:doctor_list' %}" class="btn btn-outline-primary mt-2">Врачи</a>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center shadow-sm"><div class="card-body">
+      <div class="display-6">🗓</div>
+      <a href="{% url 'schedule:workschedule_list' %}" class="btn btn-outline-primary mt-2">Расписание</a>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

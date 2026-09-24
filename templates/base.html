@@ -23,6 +23,15 @@
       <ul class="navbar-nav me-auto">
         <li class="nav-item"><a class="nav-link" href="{% url 'dashboard' %}">Главная</a></li>
         <li class="nav-item"><a class="nav-link" href="{% url 'patients:patient_list' %}">Пациенты</a></li>
+        {% if perms.appointments.view_appointment %}
+        <li class="nav-item"><a class="nav-link" href="{% url 'appointments:day_list' %}">Записи</a></li>
+        {% endif %}
+        {% if perms.appointments.add_appointment %}
+        <li class="nav-item"><a class="nav-link" href="{% url 'appointments:booking' %}">Запись</a></li>
+        {% endif %}
+        {% if perms.schedule.view_specialty %}
+        <li class="nav-item"><a class="nav-link" href="{% url 'schedule:hub' %}">Справочники</a></li>
+        {% endif %}
         {% if user.is_staff %}
         <li class="nav-item"><a class="nav-link" href="/admin/">Админка</a></li>
         {% endif %}

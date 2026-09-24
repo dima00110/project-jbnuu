@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Расписание — Регистратура{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">Расписание приёма</h3>
+  {% if perms.schedule.add_workschedule %}<a href="{% url 'schedule:workschedule_create' %}" class="btn btn-primary">+ Добавить</a>{% endif %}
+</div>
+<div class="card shadow-sm"><div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle">
+    <thead class="table-light">
+      <tr><th>Врач</th><th>День</th><th>Время</th><th>Слот</th><th>Срок</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ item.doctor.full_name }}</td>
+        <td>{{ item.get_weekday_display }}</td>
+        <td>{{ item.start_time|time:"H:i" }}–{{ item.end_time|time:"H:i" }}</td>
+        <td>{{ item.slot_minutes }} мин</td>
+        <td class="small">{{ item.valid_from|date:"d.m.Y"|default:"…" }} — {{ item.valid_to|date:"d.m.Y"|default:"…" }}</td>
+        <td class="text-end">
+          <a class="btn btn-sm btn-outline-primary" href="{% url 'schedule:workschedule_edit' item.pk %}">Изменить</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="text-center text-muted py-4">Расписание не задано</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}
