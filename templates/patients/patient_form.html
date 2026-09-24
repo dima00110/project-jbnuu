@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} — Регистратура{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">{{ title }}</h3>
+
+<form method="post" novalidate>
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+  <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+  {% endif %}
+
+  <div class="row">
+    <div class="col-lg-7">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header">Анкетные данные</div>
+        <div class="card-body">
+          <div class="row g-3">
+            {% for field in form %}
+            <div class="{% if field.name == 'notes' or field.name == 'address' %}col-12{% else %}col-md-4{% endif %}">
+              <label class="form-label" for="{{ field.id_for_label }}">
+                {{ field.label }}{% if field.field.required %} <span class="text-danger">*</span>{% endif %}
+              </label>
+              {{ field }}
+              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+              {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header">Страховые полисы</div>
+        <div class="card-body">
+          {{ formset.management_form }}
+          {% for f in formset %}
+          <div class="border rounded p-3 mb-2 policy-row">
+            {% if f.instance.pk %}<div class="small text-muted mb-2">Полис #{{ f.instance.pk }}</div>{% endif %}
+            {% if f.errors %}<div class="text-danger small mb-2">{{ f.errors }}</div>{% endif %}
+            {% if f.can_delete %}<div class="form-check mb-2">{{ f.DELETE }} <label class="form-check-label small" for="{{ f.DELETE.id_for_label }}">Удалить</label></div>{% endif %}
+            <div class="row g-2">
+              <div class="col-md-6">{{ f.policy_type }}</div>
+              <div class="col-md-6">{{ f.number }}</div>
+              <div class="col-12">{{ f.insurer }}</div>
+              <div class="col-md-6">{{ f.valid_from }}</div>
+              <div class="col-md-6">{{ f.valid_to }}</div>
+            </div>
+          </div>
+          {% endfor %}
+          {% if formset.non_form_errors %}
+          <div class="text-danger small">{{ formset.non_form_errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button class="btn btn-primary">Сохранить</button>
+        {% if patient %}
+        <a href="{% url 'patients:patient_detail' patient.pk %}" class="btn btn-outline-secondary">Отмена</a>
+        {% else %}
+        <a href="{% url 'patients:patient_list' %}" class="btn btn-outline-secondary">Отмена</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}

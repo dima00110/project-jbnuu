@@ -1,0 +1,11 @@
+"""URL-маршруты проекта «Регистратура»."""
+from django.contrib import admin
+from django.urls import include, path
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    # Встроенные представления аутентификации (login/logout/password)
+    path('accounts/', include('django.contrib.auth.urls')),
+    path('', include('apps.accounts.urls')),
+    path('patients/', include('apps.patients.urls')),
+]
