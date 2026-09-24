@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import Group
 from django.shortcuts import get_object_or_404, redirect, render
 
 from apps.accounts.decorators import role_required
@@ -128,6 +129,9 @@ def doctor_create(request):
                 )
             doctor.user = user
             doctor.save()
+            # новый пользователь-врач сразу получает роль doctor
+            doctor_group, _ = Group.objects.get_or_create(name=Roles.DOCTOR)
+            user.groups.add(doctor_group)
             messages.success(request, f'Врач «{doctor.full_name}» добавлен.')
             return redirect('schedule:doctor_list')
     else:

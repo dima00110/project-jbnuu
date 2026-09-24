@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'apps.patients.apps.PatientsConfig',
     'apps.schedule.apps.ScheduleConfig',
     'apps.appointments.apps.AppointmentsConfig',
+    'apps.queue.apps.QueueConfig',
 ]
 
 MIDDLEWARE = [

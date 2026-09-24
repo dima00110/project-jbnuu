@@ -110,15 +110,15 @@ erDiagram
 
     QueueTicket {
         bigint id PK
-        bigint patient_id FK
-        bigint appointment_id FK "NULL — талон без записи"
+        bigint appointment_id FK "OneToOne — талон на запись"
         bigint doctor_id FK
-        int number "Номер в очереди за день"
-        date issued_date
-        enum status "ожидает, вызван, на_приёме, завершён, пропущен"
-        datetime issued_at
+        date visit_date "Дата визита (для автонумерации)"
+        int number "Номер в очереди за день (врач + дата)"
+        enum status "waiting, called, with_doctor, completed, no_show, cancelled"
         datetime called_at "Время вызова"
-        int waiting_minutes "Рассчитанное ожидание"
+        datetime started_at "Начат приём"
+        datetime finished_at "Закрыт талон"
+        datetime created_at
     }
 
     Consultation {
@@ -160,14 +160,26 @@ erDiagram
 
 ### Статусы QueueTicket (талон очереди)
 ```
-ожидает → вызван → на_приёме → завершён
-   │         └────→ пропущен (повторный вызов не состоялся)
-   └→ пропущен
+waiting → called → with_doctor → completed
+   │         │          │
+   │         │          └→ no_show (врач отмечает неявку)
+   ├─────────┴→ no_show
+   └→ cancelled (отмена/перенос записи — талон закрывается сигналом)
 ```
+Талон создаётся сигналом `post_save` для **каждой** записи (включая отменённые —
+для истории), при переносе записи перенумеровывается на новую дату/врача.
+
+### Статусы кабинета врача
+- Вызов следующего (`call`) выполняет регистратор/администратор на экране общей очереди;
+- врач в кабинете: `start` (начать приём) → `complete` (завершить, опциональная
+  заметка `Appointment.visit_note`) либо `no_show`;
 
 ### Связи и правила
 - **Appointment.slot_start** уникален в паре `(doctor_id, visit_date, slot_start)` для активных статусов — защита от двойной записи.
-- **QueueTicket.appointment_id** может быть `NULL` — пациент пришёл без записи.
+- **QueueTicket.appointment** — обязательный OneToOne: очередь ведётся по записям
+  (талон «без записи», UC8, в MVP не реализован).
+- **Кабинет врача** фильтруется object-level: `doctor = request.user.doctor_profile`;
+  чужой кабинет открывает только администратор/суперпользователь.
 - **Consultation** создаётся врачом при открытии приёма; закрытие приёма переводит связанный Appointment в «завершён».
 - **Мягкое удаление**: `Patient.is_active = false` вместо физического удаления (сохраняется история визитов).
 - **AuditLog** пишется для: создание/изменение/отмена записи, создание пациента, вызов пациента, закрытие приёма.

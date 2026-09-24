@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}Кабинет {{ doctor.full_name }} — Регистратура{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-0">🩺 Кабинет: {{ doctor.full_name }}</h3>
+    <div class="text-muted">
+      {{ doctor.specialty }}{% if doctor.cabinet %} · каб. {{ doctor.cabinet.number }}{% endif %}
+      {% if is_admin_view %}<span class="badge bg-warning text-dark">вид администратора</span>{% endif %}
+    </div>
+  </div>
+  <a href="{% url 'queue:queue_list' %}?date={{ date|date:'Y-m-d' }}" class="btn btn-outline-secondary">Общая очередь</a>
+</div>
+
+<form method="get" class="mb-3">
+  <div class="d-flex gap-2 flex-wrap align-items-end">
+    <div>
+      <label class="form-label small mb-1">Дата</label>
+      <input type="date" name="date" value="{{ date|date:'Y-m-d' }}" class="form-control">
+    </div>
+    {% if not is_own %}
+    <div>
+      <label class="form-label small mb-1">Врач</label>
+      <select name="doctor" class="form-select">
+        {% for d in all_doctors %}
+        <option value="{{ d.pk }}" {% if doctor.pk == d.pk %}selected{% endif %}>{{ d.full_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <button class="btn btn-outline-primary">Показать</button>
+    <a class="btn btn-outline-secondary" href="?date={{ today|date:'Y-m-d' }}{% if not is_own %}&doctor={{ doctor.pk }}{% endif %}">Сегодня</a>
+    <a class="btn btn-outline-secondary btn-sm" href="?date={{ prev_date|date:'Y-m-d' }}&doctor={{ doctor.pk }}">← {{ prev_date|date:"d.m" }}</a>
+    <a class="btn btn-outline-secondary btn-sm" href="?date={{ next_date|date:'Y-m-d' }}&doctor={{ doctor.pk }}">{{ next_date|date:"d.m" }} →</a>
+  </div>
+</form>
+
+{% for t in tickets %}
+<div class="card shadow-sm mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fs-5 fw-semibold">№{{ t.number }} · {{ t.appointment.slot_start|time:"H:i" }}
+      {% if t.status == 'waiting' %}<span class="badge bg-secondary">в очереди</span>
+      {% elif t.status == 'called' %}<span class="badge bg-warning text-dark">вызван</span>
+      {% elif t.status == 'with_doctor' %}<span class="badge bg-info text-dark">у врача</span>
+      {% elif t.status == 'completed' %}<span class="badge bg-success">завершён</span>
+      {% elif t.status == 'no_show' %}<span class="badge bg-danger">неявка</span>
+      {% elif t.status == 'cancelled' %}<span class="badge bg-dark">отменён</span>{% endif %}
+      <span class="badge {% if t.appointment.visit_type == 'primary' %}bg-primary{% else %}bg-info text-dark{% endif %}">
+        {{ t.appointment.get_visit_type_display }}
+      </span>
+    </span>
+    {% if can_act and t.status != 'completed' and t.status != 'cancelled' and t.status != 'no_show' %}
+    <span class="d-flex gap-2">
+      {% if t.status == 'waiting' or t.status == 'called' %}
+      <form method="post" action="{% url 'queue:cabinet_action' t.pk %}">
+        {% csrf_token %}<input type="hidden" name="action" value="start">
+        <button class="btn btn-sm btn-outline-info">Начать приём</button>
+      </form>
+      {% endif %}
+      {% if t.status == 'with_doctor' %}
+      <form method="post" action="{% url 'queue:cabinet_action' t.pk %}" class="d-flex gap-2">
+        {% csrf_token %}<input type="hidden" name="action" value="complete">
+        <input type="text" name="visit_note" class="form-control form-control-sm" style="width:260px"
+               maxlength="1000" placeholder="Заметка по визиту (необязательно)">
+        <button class="btn btn-sm btn-success">Завершить приём</button>
+      </form>
+      {% endif %}
+      <form method="post" action="{% url 'queue:cabinet_action' t.pk %}">
+        {% csrf_token %}<input type="hidden" name="action" value="no_show">
+        <button class="btn btn-sm btn-outline-danger">Неявка</button>
+      </form>
+    </span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-5">
+        <div class="fw-semibold fs-5">{{ t.appointment.patient.full_name }}</div>
+        <div class="text-muted small">
+          {{ t.appointment.patient.birth_date|date:"d.m.Y" }} ({{ t.appointment.patient.age }} лет)
+          · {{ t.appointment.patient.get_gender_display }}
+        </div>
+        {% if t.appointment.patient.phone %}
+        <div>📞 {{ t.appointment.patient.phone }}</div>
+        {% endif %}
+        {% if t.appointment.patient.address %}
+        <div class="small text-muted">📍 {{ t.appointment.patient.address }}</div>
+        {% endif %}
+        {% if t.appointment.comment %}
+        <div class="small mt-1"><b>Комментарий записи:</b> {{ t.appointment.comment }}</div>
+        {% endif %}
+        {% if t.appointment.visit_note %}
+        <div class="small mt-1 text-success"><b>Заметка врача:</b> {{ t.appointment.visit_note }}</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="small text-muted mb-1">Полисы</div>
+        <ul class="list-unstyled small mb-0">
+          {% for pid, plist in policies.items %}{% if pid == t.appointment.patient_id %}
+            {% for p in plist %}
+            <li>
+              {{ p.get_policy_type_display }} №{{ p.number }}
+              {% if p.is_valid %}<span class="badge bg-success">действует</span>
+              {% else %}<span class="badge bg-danger">просрочен</span>{% endif %}
+            </li>
+            {% empty %}
+            <li class="text-muted">Нет полисов</li>
+            {% endfor %}
+          {% endif %}{% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <div class="small text-muted mb-1">Прошлые визиты (последние 5)</div>
+        <ul class="list-unstyled small mb-0">
+          {% for pid, hlist in history.items %}{% if pid == t.appointment.patient_id %}
+            {% for h in hlist %}
+            <li>
+              {{ h.visit_date|date:"d.m.Y" }} — {{ h.doctor.full_name }}
+              {% if h.status == 'done' %}<span class="badge bg-success">завершён</span>
+              {% elif h.status == 'no_show' %}<span class="badge bg-danger">неявка</span>{% endif %}
+              {% if h.visit_note %}<span class="text-muted">— {{ h.visit_note|truncatechars:60 }}</span>{% endif %}
+            </li>
+            {% empty %}
+            <li class="text-muted">Нет завершённых визитов</li>
+            {% endfor %}
+          {% endif %}{% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% empty %}
+<div class="alert alert-light border">На эту дату у врача нет записей.</div>
+{% endfor %}
+{% endblock %}

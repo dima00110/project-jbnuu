@@ -317,14 +317,27 @@ class Command(BaseCommand):
             ).select_related('user', 'specialty'),
         )
 
-        statuses = [
-            (Appointment.Status.BOOKED, ''),
-            (Appointment.Status.CONFIRMED, ''),
-            (Appointment.Status.CANCELLED_REGISTRAR, 'Демо: перенос по просьбе пациента'),
+        # История и «живая» очередь: сегодня — завершён/неявка/очередь,
+        # завтра — подтверждён/забронирован/отменён.
+        today = date.today()
+        day1_statuses = [
+            (Appointment.Status.DONE, '',
+             '[demo] осмотр состоялся, жалоб нет'),
+            (Appointment.Status.NO_SHOW, '', ''),
+            (Appointment.Status.BOOKED, '', ''),
+        ]
+        day2_statuses = [
+            (Appointment.Status.CONFIRMED, '', ''),
+            (Appointment.Status.BOOKED, '', ''),
+            (Appointment.Status.CANCELLED_REGISTRAR,
+             'Демо: перенос по просьбе пациента', ''),
+        ]
+        status_sets = [
+            (today, day1_statuses),
+            (today + timedelta(days=1), day2_statuses),
         ]
         created = 0
-        today = date.today()
-        for day in (today, today + timedelta(days=1)):
+        for day, statuses in status_sets:
             wanted = 3
             for doctor in doctors:
                 if wanted == 0:
@@ -336,7 +349,8 @@ class Command(BaseCommand):
                 for slot in free:
                     if wanted == 0:
                         break
-                    status, reason = statuses[created % len(statuses)]
+                    idx = created % len(statuses)
+                    status, reason, note = statuses[idx]
                     Appointment.objects.create(
                         patient=demo_patients[created % len(demo_patients)],
                         doctor=doctor,
@@ -344,6 +358,7 @@ class Command(BaseCommand):
                         slot_start=slot['time'],
                         status=status,
                         cancel_reason=reason,
+                        visit_note=note,
                         comment=f'{DEMO_TAG} демо-запись',
                         created_by=registrar,
                     )

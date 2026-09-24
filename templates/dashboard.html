@@ -32,9 +32,14 @@
   <div class="col-md-4">
     <div class="card text-center shadow-sm">
       <div class="card-body">
-        <div class="display-6">—</div>
-        <div class="text-muted">В очереди</div>
-        <span class="btn btn-sm btn-outline-secondary mt-2 disabled">Скоро (этап 3)</span>
+        <div class="display-6">{{ queue_waiting }}</div>
+        <div class="text-muted">В очереди сейчас</div>
+        {% if perms.queue.view_queueticket %}
+        <a href="{% url 'queue:queue_list' %}" class="btn btn-sm btn-outline-primary mt-2">К очереди</a>
+        {% endif %}
+        {% if user.doctor_profile %}
+        <a href="{% url 'queue:cabinet' %}" class="btn btn-sm btn-outline-success mt-2">В кабинет</a>
+        {% endif %}
       </div>
     </div>
   </div>

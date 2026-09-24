@@ -40,6 +40,10 @@ class Appointment(models.Model):
     )
     cancel_reason = models.CharField('Причина отмены', max_length=200, blank=True)
     comment = models.CharField('Комментарий', max_length=200, blank=True)
+    visit_note = models.TextField(
+        'Заметка врача по визиту', blank=True,
+        help_text='Заполняется врачом по завершении приёма',
+    )
     created_by = models.ForeignKey(
         'auth.User', on_delete=models.SET_NULL,
         null=True, verbose_name='Кто записал',

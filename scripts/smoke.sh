@@ -121,6 +121,11 @@ Doctor.objects.filter(user__username='doctor_test').delete()
 User.objects.filter(username='doctor_test').delete()
 Specialty.objects.filter(name='Гастроэнтеролог').delete()
 Cabinet.objects.filter(number='999').delete()
+# демо-талоны: вернуть «живых» в очередь (смоук мог вызвать пациентов)
+from apps.queue.models import QueueTicket
+QueueTicket.objects.filter(appointment__comment__startswith='[demo]') \
+    .exclude(status__in=('completed', 'no_show', 'cancelled')) \
+    .update(status='waiting', called_at=None, started_at=None, finished_at=None)
 " > /dev/null 2>&1)
 : > "$J_ADMIN"; login admin admin12345 "$J_ADMIN"
 CREATE=$(post "$BASE/patients/new/" "$J_ADMIN" \
@@ -461,6 +466,112 @@ check_eq "doctor_test: список пациентов → 302 (блок)" "302"
   "$(status "$BASE/patients/" "$COOKIES/dt.txt")"
 check_eq "doctor_test: дашборд → 200" "200" \
   "$(status "$BASE/" "$COOKIES/dt.txt")"
+
+echo "== 11. Электронная очередь и кабинет врача =="
+TODAY=$(date +%F)
+
+# талон создаётся автоматически при записи
+check_eq "талон создан для записи из смоука" "1" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.queue.models import QueueTicket; print(QueueTicket.objects.filter(appointment_id=${APT2_ID}, status='waiting').count())" \
+    2>/dev/null | tail -n1)"
+
+# аноним: монитор открыт без входа, очередь — за логином
+check_eq "аноним: монитор → 200" "200" "$(status "$BASE/queue/monitor/" "$J_ANON")"
+check_eq "аноним: очередь → 302 (login)" "302" "$(status "$BASE/queue/" "$J_ANON")"
+check_eq "монитор без имён пациентов" "0" \
+  "$(body "$BASE/queue/monitor/" "$J_ANON" | grep -c "$PAT_LAST")"
+
+# admin: список очереди
+check_eq "admin: очередь → 200" "200" "$(status "$BASE/queue/" "$J_ADMIN")"
+check_contains "admin: кнопка вызова есть" \
+  "$(body "$BASE/queue/" "$J_ADMIN")" "Вызвать следующего"
+
+# doctor1: кабинет видит свою запись, чужую — нет
+J_DOC1="$COOKIES/doctor1.txt"
+login doctor1 doctor12345 "$J_DOC1"
+check_eq "doctor1: кабинет → 200" "200" \
+  "$(status "$BASE/queue/cabinet/?date=${BOOK_DATE}" "$J_DOC1")"
+CAB_BODY=$(body "$BASE/queue/cabinet/?date=${BOOK_DATE}" "$J_DOC1")
+check_contains "кабинет: своя запись видна" "$CAB_BODY" "$PAT_LAST"
+check_eq "кабинет: запись другого врача не видна" "0" \
+  "$(echo "$CAB_BODY" | grep -c "Каримова")"
+check_eq "doctor1: общая очередь (только чтение)" "0" \
+  "$(body "$BASE/queue/" "$J_DOC1" | grep -c "Вызвать следующего")"
+
+# doctor1: полный цикл call → start → complete с заметкой
+TID=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.queue.models import QueueTicket; t=QueueTicket.objects.filter(appointment_id=${APT2_ID}).first(); print(t.pk if t else '')" \
+  2>/dev/null | tail -n1)
+check_eq "талон записи найден" "ok" "$([ -n "$TID" ] && echo ok || echo no)"
+
+CALL=$(post "$BASE/queue/${TID}/action/" "$J_ADMIN" --data-urlencode "action=call")
+check_eq "admin: вызов талона → 302" "302" "${CALL%%|*}"
+check_eq "статус талона → called" "called" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.queue.models import QueueTicket; print(QueueTicket.objects.get(pk=${TID}).status)" \
+    2>/dev/null | tail -n1)"
+
+MON_BODY=$(body "$BASE/queue/monitor/?date=${BOOK_DATE}" "$J_ANON")
+MON_NUM=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.queue.models import QueueTicket; print(QueueTicket.objects.get(pk=${TID}).number)" \
+  2>/dev/null | tail -n1)
+check_contains "монитор показывает вызванный номер" "$MON_BODY" "№${MON_NUM}"
+
+START=$(post "$BASE/queue/cabinet/${TID}/action/" "$J_DOC1" --data-urlencode "action=start")
+check_eq "doctor1: приём начат → 302" "302" "${START%%|*}"
+check_eq "статус талона → with_doctor" "with_doctor" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.queue.models import QueueTicket; print(QueueTicket.objects.get(pk=${TID}).status)" \
+    2>/dev/null | tail -n1)"
+
+DONE=$(post "$BASE/queue/cabinet/${TID}/action/" "$J_DOC1" \
+  --data-urlencode "action=complete" \
+  --data-urlencode "visit_note=[test] осмотр завершён")
+check_eq "doctor1: завершение приёма → 302" "302" "${DONE%%|*}"
+check_eq "талон → completed" "completed" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.queue.models import QueueTicket; print(QueueTicket.objects.get(pk=${TID}).status)" \
+    2>/dev/null | tail -n1)"
+check_contains "запись завершена, заметка врача сохранена" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.appointments.models import Appointment; a=Appointment.objects.get(pk=${APT2_ID}); print(a.status, a.visit_note)" \
+    2>/dev/null | tail -n1)" "[test] осмотр завершён"
+
+# изоляция: doctor1 не может завершать талоны другого врача
+TID2=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.queue.models import QueueTicket; t=QueueTicket.objects.filter(status='waiting').exclude(doctor__user__username='doctor1').first(); print(t.pk if t else '')" \
+    2>/dev/null | tail -n1)
+if [ -n "$TID2" ]; then
+  FOREIGN=$(post "$BASE/queue/cabinet/${TID2}/action/" "$J_DOC1" --data-urlencode "action=start")
+  check_contains "чужой талон: редирект с ошибкой (без параметров)" \
+    "${FOREIGN#*|}" "$BASE/queue/cabinet/"
+  check_eq "чужой талон не изменился" "waiting" \
+    "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+      "from apps.queue.models import QueueTicket; print(QueueTicket.objects.get(pk=${TID2}).status)" \
+      2>/dev/null | tail -n1)"
+else
+  check_eq "изоляция (нет чужого талона — пропущено)" "skip" "skip"
+  check_eq "изоляция (нет чужого талона — пропущено)" "skip" "skip"
+fi
+
+# manager: очередь только читает
+login manager manager12345 "$J_MGR"
+check_eq "manager: очередь (чтение) → 200" "200" "$(status "$BASE/queue/" "$J_MGR")"
+MCALL=$(post "$BASE/queue/call-next/" "$J_MGR" \
+  --data-urlencode "doctor=${DOC1_ID}" --data-urlencode "date=${BOOK_DATE}")
+check_eq "manager: вызов → 302 (блок роли)" "302" "${MCALL%%|*}"
+check_contains "manager: редирект на дашборд" "${MCALL#*|}" "$BASE/"
+
+# doctor_test: кабинет пуст (нет своих записей), но доступен
+login doctor_test Doctor-2026! "$COOKIES/dt.txt"
+check_eq "doctor_test: кабинет → 200" "200" \
+  "$(status "$BASE/queue/cabinet/" "$COOKIES/dt.txt")"
+check_eq "doctor_test: чужие записи не видны" "0" \
+  "$(body "$BASE/queue/cabinet/" "$COOKIES/dt.txt" | grep -c "$PAT_LAST")"
+check_eq "doctor_test: вызов в общей очереди → 302 (блок)" "302" \
+  "$(post "$BASE/queue/call-next/" "$COOKIES/dt.txt" \
+    --data-urlencode "doctor=${DOC1_ID}" --data-urlencode "date=${BOOK_DATE}" | cut -d'|' -f1)"
 
 echo
 echo "=================================="

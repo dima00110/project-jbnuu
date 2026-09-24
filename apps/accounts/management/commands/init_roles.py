@@ -22,8 +22,12 @@ SCHEDULE_PERMS = {
     'add_workschedule', 'change_workschedule', 'view_workschedule',
     'delete_workschedule',
 }
+QUEUE_PERMS = {
+    'add_queueticket', 'change_queueticket',
+    'view_queueticket', 'delete_queueticket',
+}
 
-ALL_CODES = PATIENT_PERMS | POLICY_PERMS | APPOINTMENT_PERMS | SCHEDULE_PERMS
+ALL_CODES = PATIENT_PERMS | POLICY_PERMS | APPOINTMENT_PERMS | SCHEDULE_PERMS | QUEUE_PERMS
 
 
 class Command(BaseCommand):
@@ -31,15 +35,22 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         grants = {
-            Roles.REGISTRAR: PATIENT_PERMS | POLICY_PERMS | APPOINTMENT_PERMS,
-            Roles.ADMINISTRATOR: (
-                PATIENT_PERMS | POLICY_PERMS | APPOINTMENT_PERMS | SCHEDULE_PERMS
+            Roles.REGISTRAR: (
+                PATIENT_PERMS | POLICY_PERMS | APPOINTMENT_PERMS | QUEUE_PERMS
             ),
-            Roles.DOCTOR: {'view_appointment'},  # этап 3 расширит
+            Roles.ADMINISTRATOR: (
+                PATIENT_PERMS | POLICY_PERMS | APPOINTMENT_PERMS
+                | SCHEDULE_PERMS | QUEUE_PERMS
+            ),
+            Roles.DOCTOR: {
+                'change_appointment',
+                'view_queueticket', 'change_queueticket',
+            },
             Roles.MANAGEMENT: {
                 'view_patient', 'view_insurancepolicy',
                 'view_appointment', 'view_specialty',
                 'view_cabinet', 'view_doctor', 'view_workschedule',
+                'view_queueticket',
             },
         }
 

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="15">
+  <title>Электронная очередь</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #0d1b2a; color: #e0e6ed; }
+    .monitor-title { letter-spacing: .1em; }
+    .call-card { background: #1b263b; border: 2px solid #e09f3e; border-radius: 12px; }
+    .call-number { font-size: 5rem; font-weight: 700; color: #e09f3e; line-height: 1; }
+    .with-number { font-size: 3.5rem; font-weight: 700; color: #4cc9f0; line-height: 1; }
+    .waiting-num { font-size: 1.6rem; font-weight: 600; }
+    .doc-name { font-size: 1.1rem; color: #90e0ef; }
+  </style>
+</head>
+<body class="p-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 monitor-title mb-0">🖥 ЭЛЕКТРОННАЯ ОЧЕРЕДЬ</h1>
+    <div class="h5 mb-0">{{ date|date:"d.m.Y" }}</div>
+  </div>
+
+  <div class="row g-4 mb-4">
+    <div class="col-md-6">
+      <div class="call-card p-4 h-100">
+        <div class="text-uppercase small mb-2">🔔 Вызван к врачу</div>
+        {% for t in called %}
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="call-number">№{{ t.number }}</span>
+          <span class="doc-name text-end">{{ t.doctor.full_name }}<br>
+            <small>{{ t.doctor.specialty }}</small></span>
+        </div>
+        {% empty %}
+        <div class="text-muted">—</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="call-card p-4 h-100" style="border-color:#4cc9f0">
+        <div class="text-uppercase small mb-2">🩺 Принимает врач</div>
+        {% for t in with_doctor %}
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="with-number">№{{ t.number }}</span>
+          <span class="doc-name text-end">{{ t.doctor.full_name }}<br>
+            <small>{{ t.doctor.specialty }}</small></span>
+        </div>
+        {% empty %}
+        <div class="text-muted">—</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="background:#1b263b; border:none;">
+    <div class="card-body">
+      <div class="text-uppercase small mb-3">Ожидают приёма</div>
+      <div class="d-flex flex-wrap gap-3">
+        {% for t in waiting %}
+        <span class="badge waiting-num bg-secondary px-3 py-2">№{{ t.number }}</span>
+        {% empty %}
+        <span class="text-muted">Пусто</span>
+        {% endfor %}
+      </div>
+      {% if doctors %}
+      <div class="mt-4 small text-secondary">
+        Приём ведут: {% for d in doctors %}{{ d }}{% if not forloop.last %}, {% endif %}{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="text-secondary small mt-3">Обновление каждые 15 секунд</div>
+</body>
+</html>

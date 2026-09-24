@@ -43,6 +43,7 @@
           <tr><th>Причина отмены</th><td class="text-danger">{{ appt.cancel_reason }}</td></tr>
           {% endif %}
           {% if appt.comment %}<tr><th>Комментарий</th><td>{{ appt.comment }}</td></tr>{% endif %}
+          {% if appt.visit_note %}<tr><th>Заметка врача</th><td class="text-success">{{ appt.visit_note }}</td></tr>{% endif %}
           <tr><th>Кто записал</th><td>{{ appt.created_by|default:"—" }}</td></tr>
         </table>
       </div>

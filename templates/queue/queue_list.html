@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Очередь на {{ date|date:"d.m.Y" }} — Регистратура{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h3 class="mb-0">Очередь на {{ date|date:"d.m.Y" }}
+    <a href="{% url 'queue:monitor' %}" target="_blank" class="btn btn-sm btn-outline-secondary">🖥 Монитор зала</a>
+  </h3>
+  {% if can_write %}
+  <a href="{% url 'appointments:booking' %}?date={{ date|date:'Y-m-d' }}" class="btn btn-primary">+ Новая запись</a>
+  {% endif %}
+</div>
+
+<form method="get" class="mb-3">
+  <div class="d-flex gap-2 flex-wrap align-items-end">
+    <div>
+      <label class="form-label small mb-1">Дата</label>
+      <input type="date" name="date" value="{{ date|date:'Y-m-d' }}" class="form-control">
+    </div>
+    <div>
+      <label class="form-label small mb-1">Врач</label>
+      <select name="doctor" class="form-select">
+        <option value="">— все —</option>
+        {% for d in doctors %}
+        <option value="{{ d.pk }}" {% if request.GET.doctor == d.pk|stringformat:'s' %}selected{% endif %}>
+          {{ d.full_name }} ({{ d.specialty }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-outline-primary">Показать</button>
+    <a class="btn btn-outline-secondary" href="?date={{ today|date:'Y-m-d' }}">Сегодня</a>
+    <a class="btn btn-outline-secondary btn-sm" href="?date={{ prev_date|date:'Y-m-d' }}">← {{ prev_date|date:"d.m" }}</a>
+    <a class="btn btn-outline-secondary btn-sm" href="?date={{ next_date|date:'Y-m-d' }}">{{ next_date|date:"d.m" }} →</a>
+  </div>
+</form>
+
+{% if can_write %}
+<form method="post" action="{% url 'queue:call_next' %}" class="mb-3">
+  {% csrf_token %}
+  <input type="hidden" name="date" value="{{ date|date:'Y-m-d' }}">
+  <div class="d-flex gap-2 align-items-end flex-wrap">
+    <div>
+      <label class="form-label small mb-1">Вызвать следующего у врача</label>
+      <select name="doctor" class="form-select" required>
+        <option value="">— выберите врача —</option>
+        {% for d in doctors %}
+        <option value="{{ d.pk }}">{{ d.full_name }} ({{ d.specialty }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-primary">🔔 Вызвать следующего</button>
+  </div>
+</form>
+{% endif %}
+
+<div class="card shadow-sm"><div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle">
+    <thead class="table-light">
+      <tr>
+        <th style="width:70px">№</th><th>Время</th><th>Пациент</th>
+        <th>Врач</th><th>Статус</th>{% if can_write %}<th class="text-end">Действия</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tickets %}
+      <tr>
+        <td class="fs-5 fw-semibold">{{ t.number }}</td>
+        <td>{{ t.appointment.slot_start|time:"H:i" }}</td>
+        <td>
+          <a href="{% url 'appointments:appointment_detail' t.appointment_id %}">
+            {{ t.appointment.patient.full_name }}
+          </a>
+        </td>
+        <td>{{ t.doctor.full_name }} <span class="text-muted small">({{ t.doctor.specialty }})</span></td>
+        <td>
+          {% if t.status == 'waiting' %}<span class="badge bg-secondary">в очереди</span>
+          {% elif t.status == 'called' %}<span class="badge bg-warning text-dark">вызван</span>
+          {% elif t.status == 'with_doctor' %}<span class="badge bg-info text-dark">у врача</span>
+          {% elif t.status == 'completed' %}<span class="badge bg-success">завершён</span>
+          {% elif t.status == 'no_show' %}<span class="badge bg-danger">неявка</span>
+          {% elif t.status == 'cancelled' %}<span class="badge bg-dark">отменён</span>{% endif %}
+        </td>
+        {% if can_write %}
+        <td class="text-end">
+          {% if t.status == 'waiting' %}
+          <form method="post" action="{% url 'queue:ticket_action' t.pk %}" class="d-inline">
+            {% csrf_token %}<input type="hidden" name="action" value="call">
+            <button class="btn btn-sm btn-outline-warning">Вызвать</button>
+          </form>
+          {% endif %}
+          {% if t.status == 'waiting' or t.status == 'called' %}
+          <form method="post" action="{% url 'queue:ticket_action' t.pk %}" class="d-inline">
+            {% csrf_token %}<input type="hidden" name="action" value="start">
+            <button class="btn btn-sm btn-outline-info">Принят</button>
+          </form>
+          <form method="post" action="{% url 'queue:ticket_action' t.pk %}" class="d-inline">
+            {% csrf_token %}<input type="hidden" name="action" value="no_show">
+            <button class="btn btn-sm btn-outline-danger">Неявка</button>
+          </form>
+          {% endif %}
+          {% if t.status == 'with_doctor' %}
+          <form method="post" action="{% url 'queue:ticket_action' t.pk %}" class="d-inline">
+            {% csrf_token %}<input type="hidden" name="action" value="no_show">
+            <button class="btn btn-sm btn-outline-danger">Неявка</button>
+          </form>
+          {% endif %}
+        </td>
+        {% endif %}
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="text-center text-muted py-4">На эту дату талонов нет</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

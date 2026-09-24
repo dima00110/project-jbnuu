@@ -22,7 +22,12 @@
     <div class="collapse navbar-collapse" id="nav">
       <ul class="navbar-nav me-auto">
         <li class="nav-item"><a class="nav-link" href="{% url 'dashboard' %}">Главная</a></li>
+        {% if perms.patients.view_patient %}
         <li class="nav-item"><a class="nav-link" href="{% url 'patients:patient_list' %}">Пациенты</a></li>
+        {% endif %}
+        {% if perms.queue.view_queueticket %}
+        <li class="nav-item"><a class="nav-link" href="{% url 'queue:queue_list' %}">Очередь</a></li>
+        {% endif %}
         {% if perms.appointments.view_appointment %}
         <li class="nav-item"><a class="nav-link" href="{% url 'appointments:day_list' %}">Записи</a></li>
         {% endif %}
@@ -31,6 +36,9 @@
         {% endif %}
         {% if perms.schedule.view_specialty %}
         <li class="nav-item"><a class="nav-link" href="{% url 'schedule:hub' %}">Справочники</a></li>
+        {% endif %}
+        {% if user.doctor_profile %}
+        <li class="nav-item"><a class="nav-link" href="{% url 'queue:cabinet' %}">Кабинет</a></li>
         {% endif %}
         {% if user.is_staff %}
         <li class="nav-item"><a class="nav-link" href="/admin/">Админка</a></li>

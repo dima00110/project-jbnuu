@@ -4,6 +4,7 @@ from django.utils import timezone
 
 from apps.appointments.models import Appointment
 from apps.patients.models import Patient
+from apps.queue.models import QueueTicket
 
 from .roles import user_roles
 
@@ -17,6 +18,10 @@ def dashboard(request):
         'today_appointments': Appointment.objects.filter(
             visit_date=timezone.localdate(),
             status__in=Appointment.ACTIVE_STATUSES,
+        ).count(),
+        'queue_waiting': QueueTicket.objects.filter(
+            visit_date=timezone.localdate(),
+            status=QueueTicket.Status.WAITING,
         ).count(),
     }
     return render(request, 'dashboard.html', context)
