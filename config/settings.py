@@ -124,6 +124,10 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 
+# Загруженные файлы (фото врачей) — раздаются в dev-режиме через urls.py
+MEDIA_URL = 'media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 # Аутентификация
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'

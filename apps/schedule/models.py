@@ -75,6 +75,17 @@ class Doctor(models.Model):
         related_name='doctors', verbose_name='Кабинет',
         null=True, blank=True,
     )
+    photo = models.FileField(
+        'Фото', upload_to='doctors/', blank=True,
+        help_text='Для карточки врача (без входа)',
+    )
+    experience_years = models.PositiveSmallIntegerField(
+        'Стаж, лет', null=True, blank=True,
+    )
+    bio = models.TextField(
+        'О себе', blank=True,
+        help_text='Краткая информация для пациентов',
+    )
     is_active = models.BooleanField('Активен', default=True)
 
     class Meta:

@@ -26,7 +26,7 @@
           <ul class="list-unstyled mb-0 mt-2">
             {% for d in g.doctors %}
             <li class="mb-1">
-              {{ d.full_name }}
+              <a href="{% url 'doctor_card' d.pk %}">{{ d.full_name }}</a>
               {% if not d.is_active %}<span class="badge bg-secondary">не работает</span>{% endif %}
               {% if d.cabinet %}<span class="text-muted small d-block">каб. {{ d.cabinet.number }}</span>{% endif %}
             </li>
@@ -46,7 +46,7 @@
           <ul class="list-unstyled mb-0 mt-2">
             {% for d in s.other %}
             <li class="mb-1">
-              {{ d.full_name }}
+              <a href="{% url 'doctor_card' d.pk %}">{{ d.full_name }}</a>
               <span class="text-muted small d-block">{{ d.specialty }}</span>
             </li>
             {% endfor %}
@@ -72,7 +72,7 @@
   <ul class="mb-0">
     {% for d in unassigned %}
     <li class="mb-1">
-      {{ d.full_name }}
+      <a href="{% url 'doctor_card' d.pk %}">{{ d.full_name }}</a>
       <span class="text-muted small">— {{ d.specialty }}</span>
       {% if d.cabinet %}<span class="text-muted small">· каб. {{ d.cabinet.number }}</span>{% endif %}
       {% if not d.is_active %}<span class="badge bg-secondary">не работает</span>{% endif %}

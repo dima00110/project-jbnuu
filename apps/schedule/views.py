@@ -199,7 +199,7 @@ def doctor_list(request):
 @role_required(Roles.ADMINISTRATOR)
 def doctor_create(request):
     if request.method == 'POST':
-        form = DoctorForm(request.POST)
+        form = DoctorForm(request.POST, request.FILES)
         if form.is_valid():
             doctor = form.save(commit=False)
             user = form.cleaned_data.get('existing_user')
@@ -231,7 +231,7 @@ def doctor_create(request):
 def doctor_edit(request, pk):
     item = get_object_or_404(Doctor, pk=pk)
     if request.method == 'POST':
-        form = DoctorForm(request.POST, instance=item)
+        form = DoctorForm(request.POST, request.FILES, instance=item)
         if form.is_valid():
             form.save()
             messages.success(request, 'Данные врача обновлены.')
@@ -381,6 +381,65 @@ def structure(request):
     return render(request, 'schedule/structure.html', {
         'sections': sections,
         'unassigned': unassigned,
+    })
+
+
+# --- Публичные страницы врачей (без входа) --------------------------------
+
+
+def doctor_directory(request):
+    """
+    Каталог врачей для пациентов — без аутентификации (как монитор зала).
+    Только активные врачи, фильтры по отделу и специальности.
+    """
+    doctors = Doctor.objects.filter(
+        is_active=True,
+    ).select_related(
+        'user', 'specialty', 'department', 'cabinet',
+    ).order_by('specialty__name', 'user__last_name', 'user__first_name')
+
+    raw_dept = request.GET.get('department')
+    department = (
+        Department.objects.filter(pk=raw_dept).first()
+        if raw_dept and raw_dept.isdigit() else None
+    )
+    if department is not None:
+        doctors = doctors.filter(department=department)
+    raw_spec = request.GET.get('specialty')
+    specialty = (
+        Specialty.objects.filter(pk=raw_spec).first()
+        if raw_spec and raw_spec.isdigit() else None
+    )
+    if specialty is not None:
+        doctors = doctors.filter(specialty=specialty)
+
+    return render(request, 'schedule/doctor_directory.html', {
+        'doctors': doctors,
+        'departments': Department.objects.all(),
+        'department': department,
+        'specialties': Specialty.objects.all(),
+        'specialty': specialty,
+    })
+
+
+def doctor_card(request, pk):
+    """Карточка врача для пациентов — без аутентификации."""
+    doctor = get_object_or_404(
+        Doctor.objects.select_related(
+            'user', 'specialty', 'department', 'cabinet',
+        ),
+        pk=pk,
+    )
+    by_day = {}
+    for ws in WorkSchedule.objects.filter(doctor=doctor):
+        by_day.setdefault(ws.weekday, []).append(ws)
+    weekdays = dict(WorkSchedule.WEEKDAYS)
+    schedule = [
+        (num, weekdays[num], rows) for num, rows in sorted(by_day.items())
+    ]
+    return render(request, 'schedule/doctor_card.html', {
+        'doctor': doctor,
+        'schedule': schedule,
     })
 
 

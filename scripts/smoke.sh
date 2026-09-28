@@ -77,6 +77,18 @@ post_body() {  # url jar [key=val...] -> html-тело ответа POST (для
     --data-urlencode "csrfmiddlewaretoken=$token" "$@" "$url"
 }
 
+post_file() {  # url jar file path [key=val...] -> "code|redirect_url" (multipart, для фото)
+  local url=$1 jar=$2 file=$3; shift 3
+  local token out args=() kv
+  token=$(grep csrftoken "$jar" | awk '{print $7}' | tail -n1)
+  args+=(-F "csrfmiddlewaretoken=$token")
+  for kv in "$@"; do args+=(-F "$kv"); done
+  out=$(curl -s -o /dev/null -w '%{http_code}|%{redirect_url}' \
+    -b "$jar" -c "$jar" -H "Referer: $url" "${args[@]}" \
+    -F "photo=@${file};type=image/png" "$url")
+  echo "$out"
+}
+
 login() {  # username password jar
   local u=$1 p=$2 jar=$3 token
   : > "$jar"
@@ -135,6 +147,9 @@ from apps.patients.models import Patient
 from apps.schedule.models import Cabinet, Department, Doctor, Specialty, WorkSchedule
 Appointment.objects.filter(comment__startswith='[test]').delete()
 Patient.objects.filter(notes__startswith='[test]').delete()
+# удаляем вместе с загруженным в смоуке фото (файловые сироты недопустимы)
+for _d in Doctor.objects.filter(user__username='doctor_test'):
+    _d.photo.delete(save=False)
 Doctor.objects.filter(user__username='doctor_test').delete()
 User.objects.filter(username='doctor_test').delete()
 Specialty.objects.filter(name='Гастроэнтеролог').delete()
@@ -335,7 +350,10 @@ DOC1_ID=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
   "from apps.schedule.models import Doctor; print(Doctor.objects.get(user__username='doctor1').id)" \
   2>/dev/null | tail -n1)
 
-# дата: сегодня или завтра — ищем день, где у doctor1 есть свободные слоты
+# дата: ищем день, где у doctor1 есть свободные слоты с запасом:
+# нужно ≥3 (один займёт первая запись, ещё один — перенос, третий — страховка
+# от «past» у ближайших слотов). К концу дня «сегодня» перестаёт подходить,
+# и смоук стабильно уходит на завтра — количество проверок не плавает.
 BOOK_DATE=""
 for off in 0 1 2 3; do
   D=$(date -d "+$off day" +%F)
@@ -346,7 +364,7 @@ from apps.appointments.slots import generate_slots
 doc = Doctor.objects.get(user__username='doctor1')
 print(sum(1 for s in generate_slots(doc, date.fromisoformat('$D')) if not s['busy'] and not s['past']))
 " 2>/dev/null | tail -n1)
-  if [ "${CNT:-0}" -gt 0 ]; then BOOK_DATE="$D"; break; fi
+  if [ "${CNT:-0}" -ge 3 ]; then BOOK_DATE="$D"; break; fi
 done
 check_eq "найден день со свободными слотами" "ok" "$([ -n "$BOOK_DATE" ] && echo ok || echo no)"
 
@@ -794,11 +812,21 @@ check_eq "врач не изменён при ошибке" "Терапевт" \
   "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
     "from apps.schedule.models import Doctor; print(Doctor.objects.get(user__username='doctor1').specialty.name)" \
     2>/dev/null | tail -n1)"
+# текущие значения полей карточки — передаём их в удачный edit,
+# чтобы смоук не затирал демо-стаж/био (поля формы без передачи обнуляются)
+DOC1_EXP=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Doctor; d=Doctor.objects.get(user__username='doctor1'); print(d.experience_years if d.experience_years is not None else '')" \
+  2>/dev/null | tail -n1)
+DOC1_BIO=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Doctor; print(Doctor.objects.get(user__username='doctor1').bio)" \
+  2>/dev/null | tail -n1)
 GOOD_EDIT=$(post "$BASE/schedule/doctors/${DOC1_PK}/edit/" "$J_ADMIN" \
   --data-urlencode "existing_user=" \
   --data-urlencode "specialty=${THERA_SPEC_PK}" \
   --data-urlencode "department=${THERA_PK}" \
   --data-urlencode "cabinet=${DOC1_CAB}" \
+  --data-urlencode "experience_years=${DOC1_EXP}" \
+  --data-urlencode "bio=${DOC1_BIO}" \
   --data-urlencode "is_active=on")
 check_eq "сочетаемая пара → 302" "302" "${GOOD_EDIT%%|*}"
 
@@ -809,6 +837,57 @@ check_eq "отчёт ?specialty=: Орлов без строки" "0" \
   "$(echo "$RSPEC" | grep -c 'text-muted small\">(Терапевт)')"
 check_eq "doctor: селектор специальности скрыт" "0" \
   "$(body "$BASE/reports/" "$J_DOC1" | grep -c 'name="specialty"')"
+
+echo "== 16. Каталог врачей и карточка (без входа) =="
+check_eq "аноним: каталог /doctors/ → 200" "200" \
+  "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/doctors/")"
+DIR_PAGE=$(curl -s "$BASE/doctors/")
+check_contains "каталог: активный врач виден" "$DIR_PAGE" "Орлов"
+check_contains "каталог: фильтр ?department= (терапевт виден)" \
+  "$(curl -s "$BASE/doctors/?department=${THERA_PK}")" "Орлов"
+check_eq "каталог: фильтр ?department= (кардиолог скрыт)" "0" \
+  "$(curl -s "$BASE/doctors/?department=${THERA_PK}" | grep -c 'Каримов')"
+
+check_eq "аноним: карточка → 200" "200" \
+  "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/doctors/${DOC1_PK}/")"
+DOC1_CARD=$(curl -s "$BASE/doctors/${DOC1_PK}/")
+check_contains "карточка: специальность" "$DOC1_CARD" "Терапевт"
+check_contains "карточка: отдел" "$DOC1_CARD" "Терапевтическое отделение"
+check_contains "карточка: кабинет и этаж" "$DOC1_CARD" "101"
+check_contains "карточка: расписание (Понедельник)" "$DOC1_CARD" "Понедельник"
+check_contains "карточка: кнопка «Записаться» с предвыбором" \
+  "$DOC1_CARD" "booking/?doctor="
+check_eq "аноним: несуществующий врач → 404" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/doctors/99999/")"
+check_eq "аноним: CRUD врачей закрыт → 302" "302" \
+  "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/schedule/doctors/")"
+check_contains "логин: ссылка на каталог врачей" \
+  "$(curl -s "$BASE/accounts/login/")" "Каталог врачей"
+
+# стаж и био из seeds — смотрим на doctor2 (doctor1 редактируется в смоуке)
+DOC2_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Doctor; print(Doctor.objects.get(user__username='doctor2').id)" \
+  2>/dev/null | tail -n1)
+DOC2_CARD=$(curl -s "$BASE/doctors/${DOC2_PK}/")
+check_contains "карточка: стаж из seeds" "$DOC2_CARD" "12 лет"
+check_contains "карточка: био [demo]" "$DOC2_CARD" "Консультирует"
+
+# врачи кликабельны на существующих страницах
+check_contains "структура: врач — ссылка на карточку" \
+  "$(body "$BASE/schedule/structure/" "$J_ADMIN")" 'href="/doctors/'
+check_contains "этажи: врач — ссылка на карточку" \
+  "$(body "$BASE/schedule/floors/" "$J_ADMIN")" 'href="/doctors/'
+check_contains "специальности: врач — ссылка на карточку" \
+  "$(body "$BASE/schedule/specialties/" "$J_ADMIN")" 'href="/doctors/'
+
+# загрузка фото (multipart) на тестовом враче
+head -c 256 /dev/urandom > "$COOKIES/photo.png"
+UP=$(post_file "$BASE/schedule/doctors/${DOC_TEST_ID}/edit/" "$J_ADMIN" \
+  "$COOKIES/photo.png" \
+  "existing_user=" "specialty=${SPEC_ID}" "department=" "cabinet=" "is_active=on")
+check_eq "фото: multipart-загрузка → 302" "302" "${UP%%|*}"
+check_contains "фото: карточка отдаёт /media/doctors/" \
+  "$(curl -s "$BASE/doctors/${DOC_TEST_ID}/")" "/media/doctors/"
 
 echo
 echo "=================================="

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}{{ doctor.full_name }} — Регистратура{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb mb-0">
+    <li class="breadcrumb-item"><a href="{% url 'doctor_directory' %}">Каталог врачей</a></li>
+    <li class="breadcrumb-item active">{{ doctor.full_name }}</li>
+  </ol>
+</nav>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="d-flex gap-4 flex-wrap">
+      <div class="text-center">
+        {% include "schedule/_avatar.html" with doctor=doctor %}
+      </div>
+      <div class="flex-grow-1" style="min-width: 260px;">
+        <h3 class="mb-1">{{ doctor.full_name }}</h3>
+        <div class="mb-2">
+          <span class="badge bg-primary">{{ doctor.specialty }}</span>
+          {% if doctor.department %}<span class="badge bg-secondary">{{ doctor.department }}</span>{% endif %}
+          {% if doctor.is_active %}
+          <span class="badge bg-success">принимает пациентов</span>
+          {% else %}
+          <span class="badge bg-secondary">не работает</span>
+          {% endif %}
+        </div>
+
+        <table class="table table-sm mb-3" style="max-width: 480px;">
+          <tr><th style="width:40%">Кабинет</th>
+            <td>{% if doctor.cabinet %}
+              № {{ doctor.cabinet.number }}, {{ doctor.cabinet.floor }} этаж
+              {% if doctor.cabinet.building %}, корпус {{ doctor.cabinet.building }}{% endif %}
+              {% else %}—{% endif %}</td></tr>
+          <tr><th>Стаж</th>
+            <td>{% if doctor.experience_years is not None %}{{ doctor.experience_years }} лет{% else %}—{% endif %}</td></tr>
+        </table>
+
+        {% if doctor.bio %}
+        <p class="mb-3">{{ doctor.bio }}</p>
+        {% endif %}
+
+        <a href="{% url 'appointments:booking' %}?doctor={{ doctor.pk }}"
+           class="btn btn-success">Записаться на приём</a>
+        <a href="{% url 'doctor_directory' %}" class="btn btn-outline-secondary">← Все врачи</a>
+      </div>
+    </div>
+
+    <h5 class="mt-4 border-bottom pb-2">Расписание приёма</h5>
+    {% if schedule %}
+    <table class="table table-sm mb-0" style="max-width: 480px;">
+      {% for num, day_name, rows in schedule %}
+      <tr>
+        <th style="width:40%">{{ day_name }}</th>
+        <td>
+          {% for ws in rows %}
+          {{ ws.start_time|time:"H:i" }}–{{ ws.end_time|time:"H:i" }}
+          <span class="text-muted small">(слот {{ ws.slot_minutes }} мин)</span>{% if not for.last %}<br>{% endif %}
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="text-muted">Расписание не задано.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

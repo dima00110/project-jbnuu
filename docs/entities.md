@@ -88,6 +88,9 @@ erDiagram
         bigint specialty_id FK
         bigint department_id FK "Отдел (опц.)"
         bigint cabinet_id FK
+        file photo "Фото (для карточки)"
+        int experience_years "Стаж, лет"
+        text bio "О себе (для пациентов)"
         boolean is_active
     }
 

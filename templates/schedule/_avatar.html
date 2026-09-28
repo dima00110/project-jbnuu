@@ -1,0 +1,7 @@
+{% if doctor.photo %}
+<img src="{{ doctor.photo.url }}" alt="{{ doctor.full_name }}" class="doc-avatar">
+{% else %}
+<span class="doc-avatar doc-avatar-initials">
+  {{ doctor.user.last_name|first }}{{ doctor.user.first_name|first }}
+</span>
+{% endif %}

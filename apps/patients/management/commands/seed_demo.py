@@ -198,6 +198,27 @@ DEMO_DOCTORS = [
 
 DEMO_DOCTOR_USERNAMES = [d[0] for d in DEMO_DOCTORS]
 
+# заполненная карточка врача: стаж и био (маркер [demo]); фото не создаём —
+# для карточки работает аватар по инициалам
+DEMO_DOCTOR_INFO = {
+    'doctor1': {
+        'experience_years': 15,
+        'bio': '[demo] Ведёт приём взрослых, занимается профилактикой и '
+               'лечение хронических заболеваний. Ведёт пациентов в '
+               'поликлинике с 2011 года.',
+    },
+    'doctor2': {
+        'experience_years': 12,
+        'bio': '[demo] Консультирует по вопросам сердечно-сосудистых '
+               'заболеваний, ЭКГ-диагностика, наблюдение гипертоников.',
+    },
+    'doctor3': {
+        'experience_years': 8,
+        'bio': '[demo] Приём детей от рождения до 18 лет: плановая '
+               'диспансеризация, вакцинация, лечение ОРВИ.',
+    },
+}
+
 
 class Command(BaseCommand):
     help = 'Создаёт демо-данные: пользователи, пациенты, справочники, расписание, записи.'
@@ -320,6 +341,15 @@ class Command(BaseCommand):
             if doctor.department_id is None:
                 doctor.department = department
                 doctor.save(update_fields=['department'])
+            # карточка врача: стаж и био (идемпотентно, всегда к демо-значению)
+            info = DEMO_DOCTOR_INFO.get(username)
+            if info and (
+                doctor.experience_years != info['experience_years']
+                or doctor.bio != info['bio']
+            ):
+                doctor.experience_years = info['experience_years']
+                doctor.bio = info['bio']
+                doctor.save(update_fields=['experience_years', 'bio'])
 
         # 7. Расписание приёма
         schedules_created = 0

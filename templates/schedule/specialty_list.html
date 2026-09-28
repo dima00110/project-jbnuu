@@ -21,7 +21,7 @@
         </td>
         <td>
           {% for d in item.doctors.all %}
-          <div>{{ d.full_name }}{% if d.department %} <span class="text-muted small">({{ d.department }})</span>{% endif %}</div>
+          <div><a href="{% url 'doctor_card' d.pk %}">{{ d.full_name }}</a>{% if d.department %} <span class="text-muted small">({{ d.department }})</span>{% endif %}</div>
           {% empty %}<span class="text-muted">нет врачей</span>{% endfor %}
         </td>
         <td class="text-end">

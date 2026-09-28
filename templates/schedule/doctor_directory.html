@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Каталог врачей — Регистратура{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">👨‍⚕️ Каталог врачей</h3>
+
+{% if departments %}
+<nav class="mb-2 d-flex gap-2 flex-wrap" aria-label="Фильтр по отделам">
+  <a class="btn btn-sm {% if department is None %}btn-primary{% else %}btn-outline-primary{% endif %}"
+     href="{% url 'doctor_directory' %}{% if specialty %}?specialty={{ specialty.pk }}{% endif %}">Все отделы</a>
+  {% for dep in departments %}
+  <a class="btn btn-sm {% if department and department.pk == dep.pk %}btn-primary{% else %}btn-outline-primary{% endif %}"
+     href="{% url 'doctor_directory' %}?department={{ dep.pk }}{% if specialty %}&specialty={{ specialty.pk }}{% endif %}">{{ dep.name }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+
+{% if specialties %}
+<nav class="mb-3 d-flex gap-2 flex-wrap" aria-label="Фильтр по специальностям">
+  <span class="text-muted small align-self-center">Специальность:</span>
+  <a class="btn btn-sm btn-outline-secondary {% if specialty is None %}active{% endif %}"
+     href="{% url 'doctor_directory' %}{% if department %}?department={{ department.pk }}{% endif %}">Все</a>
+  {% for sp in specialties %}
+  <a class="btn btn-sm btn-outline-secondary {% if specialty and specialty.pk == sp.pk %}active{% endif %}"
+     href="{% url 'doctor_directory' %}?specialty={{ sp.pk }}{% if department %}&department={{ department.pk }}{% endif %}">{{ sp.name }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+
+<div class="row g-3">
+  {% for d in doctors %}
+  <div class="col-md-6 col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body d-flex gap-3">
+        <div>{% include "schedule/_avatar.html" with doctor=d %}</div>
+        <div class="flex-grow-1">
+          <a href="{% url 'doctor_card' d.pk %}" class="fw-semibold text-decoration-none">
+            {{ d.full_name }}
+          </a>
+          <div class="text-muted small">{{ d.specialty }}</div>
+          <div class="text-muted small">
+            {{ d.department|default:"без отдела" }}
+            {% if d.cabinet %} · каб. {{ d.cabinet.number }} ({{ d.cabinet.floor }} эт.){% endif %}
+          </div>
+          <a href="{% url 'doctor_card' d.pk %}" class="btn btn-sm btn-outline-primary mt-2">
+            Подробнее
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="col-12"><div class="alert alert-info">Врачи не найдены.</div></div>
+  {% endfor %}
+</div>
+{% endblock %}

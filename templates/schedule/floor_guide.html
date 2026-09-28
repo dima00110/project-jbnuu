@@ -50,7 +50,7 @@
           <ul class="list-unstyled mb-0 mt-2">
             {% for d in c.doctors.all %}
             <li class="mb-1">
-              {{ d.full_name }}
+              <a href="{% url 'doctor_card' d.pk %}">{{ d.full_name }}</a>
               <span class="text-muted small d-block">{{ d.specialty }}{% if d.department %} · {{ d.department }}{% endif %}</span>
             </li>
             {% empty %}
