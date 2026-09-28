@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Отчёты — Регистратура{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">📊 Отчёты за период</h3>
+
+{% include "reports/_period.html" %}
+
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5>Загрузка врачей</h5>
+        <p class="text-muted small">Записи по статусам и % загрузки
+          по каждому врачу за период.</p>
+        <a class="btn btn-outline-primary"
+           href="{% url 'reports:load' %}?from={{ date_from|date:'Y-m-d' }}&to={{ date_to|date:'Y-m-d' }}{% if doctor %}&doctor={{ doctor.pk }}{% endif %}">
+          Открыть</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5>Неявки</h5>
+        <p class="text-muted small">Список визитов со статусом «неявка»
+          и счётчик неявок пациента.</p>
+        <a class="btn btn-outline-primary"
+           href="{% url 'reports:no_shows' %}?from={{ date_from|date:'Y-m-d' }}&to={{ date_to|date:'Y-m-d' }}{% if doctor %}&doctor={{ doctor.pk }}{% endif %}">
+          Открыть</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5>Поток пациентов</h5>
+        <p class="text-muted small">Распределение по дням: записано,
+          завершено, неявки, отмены.</p>
+        <a class="btn btn-outline-primary"
+           href="{% url 'reports:flow' %}?from={{ date_from|date:'Y-m-d' }}&to={{ date_to|date:'Y-m-d' }}{% if doctor %}&doctor={{ doctor.pk }}{% endif %}">
+          Открыть</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

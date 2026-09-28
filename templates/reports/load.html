@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Загрузка врачей — Регистратура{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h3 class="mb-0">Загрузка врачей</h3>
+  <a href="{% url 'reports:hub' %}?from={{ date_from|date:'Y-m-d' }}&to={{ date_to|date:'Y-m-d' }}"
+     class="btn btn-outline-secondary btn-sm">← Все отчёты</a>
+</div>
+
+{% include "reports/_period.html" %}
+
+<div class="card shadow-sm"><div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>Врач</th>
+        <th class="text-end">Всего записей</th>
+        <th class="text-end">Активных</th>
+        <th class="text-end">Завершено</th>
+        <th class="text-end">Неявок</th>
+        <th class="text-end">Отмен</th>
+        <th style="min-width:180px">% загрузки</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>
+          {% if r.doctor %}{{ r.doctor.full_name }}
+          <span class="text-muted small">({{ r.doctor.specialty }})</span>
+          {% else %}— (врач удалён) —{% endif %}
+        </td>
+        <td class="text-end">{{ r.total }}</td>
+        <td class="text-end">{{ r.booked }}</td>
+        <td class="text-end">{{ r.done }}</td>
+        <td class="text-end">{{ r.no_show }}</td>
+        <td class="text-end">{{ r.cancelled }}</td>
+        <td>
+          <div class="d-flex align-items-center gap-2">
+            <div class="progress flex-grow-1" style="height: 18px;">
+              <div class="progress-bar {% if r.load_pct >= 75 %}bg-success{% elif r.load_pct >= 40 %}bg-info text-dark{% else %}bg-warning text-dark{% endif %}"
+                   style="width: {{ r.load_pct }}%"></div>
+            </div>
+            <span class="small" style="width:42px">{{ r.load_pct }}%</span>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7" class="text-center text-muted py-4">
+        За период нет записей
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+<p class="text-muted small mt-2">
+  % загрузки = (активные + завершённые + неявки) / все записи врача за период;
+  считается по фактическим записям, без потенциала слотов расписания.
+</p>
+{% endblock %}

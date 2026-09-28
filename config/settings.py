@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'apps.schedule.apps.ScheduleConfig',
     'apps.appointments.apps.AppointmentsConfig',
     'apps.queue.apps.QueueConfig',
+    'apps.reports.apps.ReportsConfig',
 ]
 
 MIDDLEWARE = [

@@ -289,12 +289,16 @@ class Command(BaseCommand):
         # 8. Записи на сегодня и завтра
         appts_created = self._seed_appointments(reset)
 
+        # 9. История за прошлые 7 дней (для отчётов)
+        history_created = self._seed_history(reset)
+
         total_patients = Patient.objects.filter(notes__startswith=DEMO_TAG).count()
         total_appts = Appointment.objects.filter(comment__startswith=DEMO_TAG).count()
         self.stdout.write(self.style.SUCCESS(
             f'Готово. Пациентов: {total_patients}, записей: {total_appts}; '
             f'за запуск: пользователей — {created_users}, '
-            f'расписаний — {schedules_created}, записей — {appts_created}.'
+            f'расписаний — {schedules_created}, записей — {appts_created}, '
+            f'истории — {history_created}.'
         ))
 
     def _seed_appointments(self, reset):
@@ -365,4 +369,65 @@ class Command(BaseCommand):
                     created += 1
                     wanted -= 1
         self.stdout.write(self.style.SUCCESS(f'Создано демо-записей: {created}'))
+        return created
+
+    def _seed_history(self, reset):
+        """
+        История за 7 прошедших дней для отчётов: 2 записи в день
+        в статусах done / no_show / cancelled (прошлые даты — только ORM,
+        валидация «запись в прошлое» на записи не проверяется).
+        """
+        history_tag = f'{DEMO_TAG} история'
+        if not reset and Appointment.objects.filter(
+            comment__startswith=history_tag,
+        ).exists():
+            self.stdout.write('Демо-история уже есть — пропускаю.')
+            return 0
+
+        demo_patients = list(
+            Patient.objects.filter(notes__startswith=DEMO_TAG, is_active=True),
+        )
+        if not demo_patients:
+            return 0
+        registrar = User.objects.filter(username='registrar1').first()
+        doctors = list(
+            Doctor.objects.filter(
+                user__username__in=DEMO_DOCTOR_USERNAMES,
+            ).select_related('user', 'specialty'),
+        )
+
+        statuses = [
+            (Appointment.Status.DONE, '', '[demo] осмотр по истории'),
+            (Appointment.Status.NO_SHOW, '', ''),
+            (Appointment.Status.CANCELLED_REGISTRAR,
+             'Демо: отмена накануне', ''),
+        ]
+        created = 0
+        today = date.today()
+        for offset in range(1, 8):  # 7 прошедших дней
+            day = today - timedelta(days=offset)
+            wanted = 2
+            for doctor in doctors:
+                if wanted == 0:
+                    break
+                free = [s for s in generate_slots(doctor, day)
+                        if not s['busy']]  # прошлые слоты не «past»-фильтруем
+                for slot in free:
+                    if wanted == 0:
+                        break
+                    status, reason, note = statuses[created % len(statuses)]
+                    Appointment.objects.create(
+                        patient=demo_patients[created % len(demo_patients)],
+                        doctor=doctor,
+                        visit_date=day,
+                        slot_start=slot['time'],
+                        status=status,
+                        cancel_reason=reason,
+                        visit_note=note,
+                        comment=history_tag,
+                        created_by=registrar,
+                    )
+                    created += 1
+                    wanted -= 1
+        self.stdout.write(self.style.SUCCESS(f'Создано записей истории: {created}'))
         return created

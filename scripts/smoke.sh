@@ -573,6 +573,58 @@ check_eq "doctor_test: вызов в общей очереди → 302 (блок
   "$(post "$BASE/queue/call-next/" "$COOKIES/dt.txt" \
     --data-urlencode "doctor=${DOC1_ID}" --data-urlencode "date=${BOOK_DATE}" | cut -d'|' -f1)"
 
+echo "== 12. Отчёты =="
+# аноним и роли без доступа
+check_eq "аноним: /reports/ → 302 (login)" "302" "$(status "$BASE/reports/" "$J_ANON")"
+login registrar1 registrar12345 "$J_REG"
+check_eq "registrar: /reports/ → 302 (нет прав)" "302" "$(status "$BASE/reports/" "$J_REG")"
+
+# admin: все три отчёта
+: > "$J_ADMIN"; login admin admin12345 "$J_ADMIN"
+check_eq "admin: хаб отчётов → 200" "200" "$(status "$BASE/reports/" "$J_ADMIN")"
+check_eq "admin: загрузка врачей → 200" "200" "$(status "$BASE/reports/load/" "$J_ADMIN")"
+check_eq "admin: неявки → 200" "200" "$(status "$BASE/reports/no-shows/" "$J_ADMIN")"
+check_eq "admin: поток пациентов → 200" "200" "$(status "$BASE/reports/flow/" "$J_ADMIN")"
+
+# данные из seeds видны в отчётах (период — 30 дней назад, чтобы покрыть историю)
+P_FROM=$(date -d "-30 day" +%F)
+P_TO=$(date -d "+1 day" +%F)
+LOAD_BODY=$(body "$BASE/reports/load/?from=${P_FROM}&to=${P_TO}" "$J_ADMIN")
+check_contains "загрузка: есть демо-врач" "$LOAD_BODY" "Орлов"
+check_contains "загрузка: % загрузки отображается" "$LOAD_BODY" "% загрузки"
+NS_BODY=$(body "$BASE/reports/no-shows/?from=${P_FROM}&to=${P_TO}" "$J_ADMIN")
+NS_PAT=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.appointments.models import Appointment; a=Appointment.objects.filter(status='no_show', comment__startswith='[demo]').first(); print(a.patient.last_name if a else '')" \
+  2>/dev/null | tail -n1)
+check_contains "неявки: пациент из seeds в списке" "$NS_BODY" "$NS_PAT"
+FLOW_BODY=$(body "$BASE/reports/flow/?from=${P_FROM}&to=${P_TO}" "$J_ADMIN")
+check_contains "поток: пиковый день показан" "$FLOW_BODY" "Пик дня"
+
+# валидация периода: from > to — автоматическая замена, без ошибки
+check_eq "период from>to → 200 (auto-swap)" "200" \
+  "$(status "$BASE/reports/load/?from=${P_TO}&to=${P_FROM}" "$J_ADMIN")"
+
+# doctor: только свои цифры (изоляция)
+J_DOC1="$COOKIES/doctor1.txt"
+login doctor1 doctor12345 "$J_DOC1"
+check_eq "doctor: хаб отчётов → 200" "200" "$(status "$BASE/reports/" "$J_DOC1")"
+DOC_LOAD=$(body "$BASE/reports/load/?from=${P_FROM}&to=${P_TO}" "$J_DOC1")
+check_contains "doctor: свой врач в отчёте" "$DOC_LOAD" "Орлов"
+check_eq "doctor: чужой врач не виден" "0" "$(echo "$DOC_LOAD" | grep -c "Каримов")"
+check_eq "doctor: селектор врачей скрыт" "0" \
+  "$(body "$BASE/reports/" "$J_DOC1" | grep -c 'name="doctor"')"
+
+# manager: чтение всех отчётов
+login manager manager12345 "$J_MGR"
+check_eq "manager: хаб отчётов → 200" "200" "$(status "$BASE/reports/" "$J_MGR")"
+check_eq "manager: неявки → 200" "200" "$(status "$BASE/reports/no-shows/" "$J_MGR")"
+
+# навигация
+check_contains "ссылка «Отчёты» в меню (admin)" \
+  "$(body "$BASE/" "$J_ADMIN")" "/reports/"
+check_eq "registrar: ссылки «Отчёты» нет в меню" "0" \
+  "$(body "$BASE/" "$J_REG" | grep -c '/reports/')"
+
 echo
 echo "=================================="
 echo "Итого: PASS=$PASS FAIL=$FAIL"

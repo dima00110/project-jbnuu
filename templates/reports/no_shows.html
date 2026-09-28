@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Неявки — Регистратура{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h3 class="mb-0">Неявки за период</h3>
+  <a href="{% url 'reports:hub' %}?from={{ date_from|date:'Y-m-d' }}&to={{ date_to|date:'Y-m-d' }}"
+     class="btn btn-outline-secondary btn-sm">← Все отчёты</a>
+</div>
+
+{% include "reports/_period.html" %}
+
+<div class="card shadow-sm"><div class="table-responsive">
+  <table class="table table-hover mb-0 align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>Дата</th><th>Время</th><th>Пациент</th><th>Врач</th>
+        <th class="text-end">Неявок пациента за период</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in appointments %}
+      <tr>
+        <td>{{ a.visit_date|date:"d.m.Y" }}</td>
+        <td>{{ a.slot_start|time:"H:i" }}</td>
+        <td>{{ a.patient.full_name }}</td>
+        <td>{{ a.doctor.full_name }}</td>
+        <td class="text-end">{{ a.patient_no_shows }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="text-center text-muted py-4">
+        Неявок за период нет 🎉
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

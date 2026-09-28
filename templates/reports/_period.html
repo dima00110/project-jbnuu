@@ -1,0 +1,28 @@
+<form method="get" class="d-flex gap-2 flex-wrap align-items-end mb-3">
+  <div>
+    <label class="form-label small mb-1">С</label>
+    <input type="date" name="from" value="{{ date_from|date:'Y-m-d' }}" class="form-control">
+  </div>
+  <div>
+    <label class="form-label small mb-1">По</label>
+    <input type="date" name="to" value="{{ date_to|date:'Y-m-d' }}" class="form-control">
+  </div>
+  {% if can_pick %}
+  <div>
+    <label class="form-label small mb-1">Врач</label>
+    <select name="doctor" class="form-select">
+      <option value="">— все —</option>
+      {% for d in doctors %}
+      <option value="{{ d.pk }}" {% if doctor and doctor.pk == d.pk %}selected{% endif %}>
+        {{ d.full_name }} ({{ d.specialty }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  <button class="btn btn-outline-primary">Показать</button>
+  <span class="text-muted small align-self-center">
+    {{ date_from|date:"d.m.Y" }} — {{ date_to|date:"d.m.Y" }}
+    {% if doctor %} · {{ doctor.full_name }}{% endif %}
+  </span>
+</form>
