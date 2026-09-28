@@ -625,6 +625,30 @@ check_contains "ссылка «Отчёты» в меню (admin)" \
 check_eq "registrar: ссылки «Отчёты» нет в меню" "0" \
   "$(body "$BASE/" "$J_REG" | grep -c '/reports/')"
 
+echo "== 13. Этажи и кабинеты врачей =="
+check_eq "аноним: /schedule/floors/ → 302 (login)" "302" \
+  "$(status "$BASE/schedule/floors/" "$J_ANON")"
+check_eq "registrar: кабинеты по этажам → 200" "200" \
+  "$(status "$BASE/schedule/floors/" "$J_REG")"
+GUIDE=$(body "$BASE/schedule/floors/" "$J_ADMIN")
+check_contains "этажи: заголовок этажа" "$GUIDE" "1 этаж"
+check_contains "этажи: кабинет 101 показан" "$GUIDE" "Кабинет 101"
+check_contains "этажи: врач Орлов закреплён" "$GUIDE" "Орлов"
+check_contains "этажи: ссылка на дашборде (admin)" \
+  "$(body "$BASE/" "$J_ADMIN")" "/schedule/floors/"
+check_contains "этажи: ссылка на дашборде (registrar)" \
+  "$(body "$BASE/" "$J_REG")" "/schedule/floors/"
+# фильтр по этажу в CRUD кабинетов
+CAB2=$(body "$BASE/schedule/cabinets/?floor=2" "$J_ADMIN")
+check_contains "фильтр ?floor=2: кабинет 201 виден" "$CAB2" "201"
+check_eq "фильтр ?floor=2: кабинет 101 скрыт" "0" \
+  "$(echo "$CAB2" | grep -c '<td>101</td>')"
+check_contains "фильтр ?floor=2: пустые кабинеты без врачей" "$CAB2" "—"
+check_eq "фильтр ?floor=999: пустое состояние, 200" "200" \
+  "$(status "$BASE/schedule/cabinets/?floor=999" "$J_ADMIN")"
+check_eq "registrar: CRUD кабинетов → 302 (нет прав)" "302" \
+  "$(status "$BASE/schedule/cabinets/" "$J_REG")"
+
 echo
 echo "=================================="
 echo "Итого: PASS=$PASS FAIL=$FAIL"

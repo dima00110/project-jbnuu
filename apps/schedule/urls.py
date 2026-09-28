@@ -6,6 +6,8 @@ app_name = 'schedule'
 
 urlpatterns = [
     path('', views.hub, name='hub'),
+    # кабинеты по этажам (справочная, открыта всем вошедшим)
+    path('floors/', views.floor_guide, name='floor_guide'),
     # специальности
     path('specialties/', views.specialty_list, name='specialty_list'),
     path('specialties/new/', views.specialty_create, name='specialty_create'),

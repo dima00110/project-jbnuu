@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Кабинеты по этажам — Регистратура{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h3 class="mb-0">🧭 Кабинеты по этажам</h3>
+  {% if perms.schedule.view_specialty %}
+  <a href="{% url 'schedule:hub' %}" class="btn btn-outline-secondary btn-sm">← Справочники</a>
+  {% endif %}
+</div>
+
+{% if floors %}
+<nav class="mb-3 d-flex gap-2 flex-wrap" aria-label="Фильтр по этажам">
+  <a class="btn btn-sm {% if floor is None %}btn-primary{% else %}btn-outline-primary{% endif %}"
+     href="{% url 'schedule:floor_guide' %}">Все этажи</a>
+  {% for f in floors %}
+  <a class="btn btn-sm {% if floor == f %}btn-primary{% else %}btn-outline-primary{% endif %}"
+     href="{% url 'schedule:floor_guide' %}?floor={{ f }}">{{ f }} этаж</a>
+  {% endfor %}
+</nav>
+{% endif %}
+
+{% for group in groups %}
+<div class="mb-4">
+  <h5 class="border-bottom pb-2">
+    {{ group.building|default:"Основной корпус" }} · {{ group.floor }} этаж
+  </h5>
+  <div class="row g-3">
+    {% for c in group.cabinets %}
+    <div class="col-md-4 col-lg-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start">
+            <span class="fs-5 fw-semibold">Кабинет {{ c.number }}</span>
+            <span class="badge bg-secondary">{{ c.floor }} этаж</span>
+          </div>
+          <ul class="list-unstyled mb-0 mt-2">
+            {% for d in c.doctors.all %}
+            <li class="mb-1">
+              {{ d.full_name }}
+              <span class="text-muted small d-block">{{ d.specialty }}</span>
+            </li>
+            {% empty %}
+            <li class="text-muted small">Нет закреплённых врачей</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% empty %}
+<div class="alert alert-info">Кабинеты не найдены.</div>
+{% endfor %}
+{% endblock %}

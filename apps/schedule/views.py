@@ -62,8 +62,21 @@ def specialty_edit(request, pk):
 @login_required
 @role_required(Roles.ADMINISTRATOR, Roles.MANAGEMENT)
 def cabinet_list(request):
-    items = Cabinet.objects.all()
-    return render(request, 'schedule/cabinet_list.html', {'items': items})
+    floors = sorted(
+        Cabinet.objects.values_list('floor', flat=True).distinct(),
+    )
+    items = Cabinet.objects.prefetch_related('doctors__user').order_by(
+        'floor', 'number',
+    )
+    raw_floor = request.GET.get('floor')
+    floor = int(raw_floor) if raw_floor and raw_floor.isdigit() else None
+    if floor is not None:
+        items = items.filter(floor=floor)
+    return render(request, 'schedule/cabinet_list.html', {
+        'items': items,
+        'floors': floors,
+        'floor': floor,
+    })
 
 
 @login_required
@@ -204,6 +217,46 @@ def workschedule_edit(request, pk):
     return render(request, 'schedule/form.html', {
         'form': form, 'title': f'Расписание: {item}',
         'back_url': 'schedule:workschedule_list',
+    })
+
+
+# --- Кабинеты по этажам ---------------------------------------------------
+
+
+@login_required
+def floor_guide(request):
+    """
+    Справочник «Кабинеты по этажам» для навигации пациентов:
+    группировка кабинетов по корпусу и этажу с закреплёнными врачами.
+    Открыт всем вошедшим (в отличие от CRUD справочников).
+    """
+    items = list(
+        Cabinet.objects.prefetch_related(
+            'doctors__user', 'doctors__specialty',
+        ).order_by('building', 'floor', 'number')
+    )
+    floors = sorted({c.floor for c in items})
+    raw_floor = request.GET.get('floor')
+    floor = int(raw_floor) if raw_floor and raw_floor.isdigit() else None
+    if floor is not None:
+        items = [c for c in items if c.floor == floor]
+
+    groups, index = [], {}
+    for cabinet in items:
+        key = (cabinet.building, cabinet.floor)
+        if key not in index:
+            index[key] = {
+                'building': cabinet.building,
+                'floor': cabinet.floor,
+                'cabinets': [],
+            }
+            groups.append(index[key])
+        index[key]['cabinets'].append(cabinet)
+
+    return render(request, 'schedule/floor_guide.html', {
+        'groups': groups,
+        'floors': floors,
+        'floor': floor,
     })
 
 

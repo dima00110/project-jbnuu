@@ -43,6 +43,15 @@
       </div>
     </div>
   </div>
+  <div class="col-md-4">
+    <div class="card text-center shadow-sm">
+      <div class="card-body">
+        <div class="display-6">🧭</div>
+        <div class="text-muted">Кабинеты по этажам</div>
+        <a href="{% url 'schedule:floor_guide' %}" class="btn btn-sm btn-outline-primary mt-2">Открыть</a>
+      </div>
+    </div>
+  </div>
 </div>
 
 {% if perms.patients.add_patient %}

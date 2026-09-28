@@ -7,23 +7,43 @@
   <h3 class="mb-0">Кабинеты</h3>
   {% if perms.schedule.add_cabinet %}<a href="{% url 'schedule:cabinet_create' %}" class="btn btn-primary">+ Добавить</a>{% endif %}
 </div>
+
+{% if floors %}
+<nav class="mb-3 d-flex gap-2 flex-wrap" aria-label="Фильтр по этажам">
+  <a class="btn btn-sm {% if floor is None %}btn-primary{% else %}btn-outline-primary{% endif %}"
+     href="{% url 'schedule:cabinet_list' %}">Все</a>
+  {% for f in floors %}
+  <a class="btn btn-sm {% if floor == f %}btn-primary{% else %}btn-outline-primary{% endif %}"
+     href="{% url 'schedule:cabinet_list' %}?floor={{ f }}">{{ f }} этаж</a>
+  {% endfor %}
+</nav>
+{% endif %}
+
 <div class="card shadow-sm"><div class="table-responsive">
   <table class="table table-hover mb-0 align-middle">
-    <thead class="table-light"><tr><th>Номер</th><th>Этаж</th><th>Корпус</th><th></th></tr></thead>
+    <thead class="table-light"><tr><th>Номер</th><th>Этаж</th><th>Корпус</th><th>Врачи</th><th></th></tr></thead>
     <tbody>
       {% for item in items %}
       <tr>
         <td>{{ item.number }}</td>
         <td>{{ item.floor }}</td>
         <td>{{ item.building|default:"—" }}</td>
+        <td>
+          {% for d in item.doctors.all %}{{ d.full_name }}{% if not for.last %}, {% endif %}
+          {% empty %}<span class="text-muted">—</span>{% endfor %}
+        </td>
         <td class="text-end">
-          <a class="btn btn-sm btn-outline-primary" href="{% url 'schedule:cabinet_edit' item.pk %}">Изменить</a>
+          <a class="btn btn-sm btn-outline-primary"
+             href="{% url 'schedule:cabinet_edit' item.pk %}">Изменить</a>
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="4" class="text-center text-muted py-4">Пока нет кабинетов</td></tr>
+      <tr><td colspan="5" class="text-center text-muted py-4">Кабинеты не найдены</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div></div>
+<p class="text-muted small mt-2">
+  <a href="{% url 'schedule:floor_guide' %}">Кабинеты по этажам</a> — справочная страница для пациентов.
+</p>
 {% endblock %}
