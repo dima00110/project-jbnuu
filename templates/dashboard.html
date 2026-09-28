@@ -52,6 +52,17 @@
       </div>
     </div>
   </div>
+  {% if perms.appointments.view_direction %}
+  <div class="col-md-4">
+    <div class="card text-center shadow-sm">
+      <div class="card-body">
+        <div class="display-6">📋</div>
+        <div class="text-muted">Входящие направления</div>
+        <a href="{% url 'appointments:direction_list' %}" class="btn btn-sm btn-outline-primary mt-2">Открыть</a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 </div>
 
 {% if perms.patients.add_patient %}

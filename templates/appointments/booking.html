@@ -65,6 +65,13 @@
 </div>
 
 <!-- Шаг 2. Слоты -->
+{% if direction %}
+<div class="alert alert-info">
+  📋 Оформляется по направлению <b>{{ direction.number }}</b>
+  ({{ direction.patient.full_name }} → {{ direction.specialty }}).
+  После выбора слота направление будет закрыто записью.
+</div>
+{% endif %}
 <div class="card shadow-sm mb-3">
   <div class="card-header">Шаг 2. Свободное время — {{ date|date:"d.m.Y (l)" }}</div>
   <div class="card-body">
@@ -86,6 +93,7 @@
             <input type="hidden" name="doctor" value="{{ doctor.pk }}">
             <input type="hidden" name="visit_date" value="{{ date|date:'Y-m-d' }}">
             <input type="hidden" name="slot_start" value="{{ s.time|time:'H:i:s' }}">
+            {% if direction %}<input type="hidden" name="direction" value="{{ direction.pk }}">{% endif %}
             <button class="btn btn-success">{{ s.time|time:"H:i" }}</button>
           </form>
         {% endif %}

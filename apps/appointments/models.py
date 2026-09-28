@@ -72,3 +72,60 @@ class Appointment(models.Model):
     @property
     def is_active(self):
         return self.status in self.ACTIVE_STATUSES
+
+
+class Direction(models.Model):
+    """Направление пациента к подходящему свободному врачу.
+
+    Создаётся врачом (из кабинета) или администратором (с карточки
+    пациента); регистратор видит входящие направления, подбирает
+    врача и записывает пациента — направление становится «booked».
+    """
+
+    class Status(models.TextChoices):
+        NEW = 'new', 'Направлено'
+        BOOKED = 'booked', 'Записано'
+        CANCELLED = 'cancelled', 'Отменено'
+
+    patient = models.ForeignKey(
+        'patients.Patient', on_delete=models.PROTECT,
+        related_name='directions', verbose_name='Пациент',
+    )
+    specialty = models.ForeignKey(
+        'schedule.Specialty', on_delete=models.PROTECT,
+        related_name='directions', verbose_name='Специальность (цель)',
+    )
+    reason = models.TextField('Причина направления')
+    from_doctor = models.ForeignKey(
+        'schedule.Doctor', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='directions',
+        verbose_name='Кто направил',
+    )
+    created_by = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL,
+        null=True, related_name='directions_created',
+        verbose_name='Кто создал',
+    )
+    appointment = models.ForeignKey(
+        Appointment, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='direction',
+        verbose_name='Запись (результат)',
+    )
+    status = models.CharField(
+        'Статус', max_length=16,
+        choices=Status.choices, default=Status.NEW,
+    )
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Направление'
+        verbose_name_plural = 'Направления'
+        ordering = ['-created_at', '-pk']
+
+    def __str__(self):
+        return f'{self.number}: {self.patient} → {self.specialty}'
+
+    @property
+    def number(self):
+        """Виртуальный номер — по образцу талона, без отдельного поля."""
+        return f'Н-{self.pk:04d}'

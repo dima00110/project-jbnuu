@@ -3,9 +3,9 @@ from datetime import date as date_cls
 from django import forms
 
 from apps.patients.models import Patient
-from apps.schedule.models import Doctor
+from apps.schedule.models import Doctor, Specialty
 
-from .models import Appointment
+from .models import Appointment, Direction
 from .slots import generate_slots
 
 
@@ -97,6 +97,23 @@ class AppointmentCancelForm(forms.Form):
         label='Причина отмены', max_length=200,
         widget=forms.TextInput(attrs={
             'class': 'form-control', 'placeholder': 'Например: перенос по просьбе пациента',
+        }),
+    )
+
+
+class DirectionCreateForm(forms.Form):
+    """Направление: к какому специалисту направить и зачем."""
+
+    specialty = forms.ModelChoiceField(
+        label='Специальность (к кому направить)',
+        queryset=Specialty.objects.all().order_by('name'),
+        widget=forms.Select(attrs={'class': 'form-select'}),
+    )
+    reason = forms.CharField(
+        label='Причина направления', max_length=500,
+        widget=forms.Textarea(attrs={
+            'class': 'form-control', 'rows': 2,
+            'placeholder': 'Например: консультация по результатам осмотра',
         }),
     )
 

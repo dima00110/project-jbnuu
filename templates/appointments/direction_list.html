@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% load role_tags %}
+
+{% block title %}Направления — Регистратура{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-0">📋 Входящие направления</h3>
+    <div class="text-muted small">
+      Система подбирает подходящих свободных врачей по специальности:
+      ближайший слот → загрузка сегодня → этаж/кабинет.
+    </div>
+  </div>
+</div>
+
+{% for d in directions %}
+<div class="card shadow-sm mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span>
+      <b>{{ d.number }}</b>
+      {% if d.status == 'new' %}<span class="badge bg-warning text-dark">направлено</span>
+      {% elif d.status == 'booked' %}<span class="badge bg-success">записано</span>
+      {% else %}<span class="badge bg-secondary">отменено</span>{% endif %}
+      <span class="text-muted small ms-2">{{ d.created_at|date:"d.m.Y H:i" }}</span>
+    </span>
+    {% if can_write and d.status == 'new' %}
+    <form method="post" action="{% url 'appointments:direction_cancel' d.pk %}"
+          onsubmit="return confirm('Отменить направление {{ d.number }}?');">
+      {% csrf_token %}
+      <button class="btn btn-sm btn-outline-danger">Отменить</button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-5">
+        <div class="fw-semibold fs-5">
+          <a href="{% url 'patients:patient_detail' d.patient.pk %}">{{ d.patient.full_name }}</a>
+        </div>
+        <div class="mt-1">
+          Цель: <span class="badge bg-primary">{{ d.specialty }}</span>
+        </div>
+        {% if d.from_doctor %}
+        <div class="small mt-1">От кого: {{ d.from_doctor.full_name }} ({{ d.from_doctor.specialty }})</div>
+        {% else %}
+        <div class="small text-muted mt-1">Создано: {{ d.created_by.username|default:"—" }}</div>
+        {% endif %}
+        <div class="small mt-1"><b>Причина:</b> {{ d.reason }}</div>
+        {% if d.status == 'booked' and d.appointment %}
+        <div class="small mt-1 text-success">
+          ✅ Записан: {{ d.appointment.doctor.full_name }},
+          {{ d.appointment.visit_date|date:"d.m.Y" }} {{ d.appointment.slot_start|time:"H:i" }}
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="col-md-7">
+        {% if d.status == 'new' %}
+        <div class="small text-muted mb-1">Подходящие свободные врачи</div>
+        {% if d.candidates %}
+        <div class="row g-2">
+          {% for c in d.candidates %}
+          <div class="col-12">
+            <div class="border rounded p-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div>
+                <a href="{% url 'doctor_card' c.doctor.pk %}" class="fw-semibold text-decoration-none">
+                  {{ c.doctor.full_name }}
+                </a>
+                <span class="text-muted small">
+                  · {{ c.doctor.department|default:"без отдела" }}
+                  {% if c.doctor.cabinet %} · каб. {{ c.doctor.cabinet.number }} ({{ c.doctor.cabinet.floor }} эт.){% endif %}
+                </span>
+                <div class="small">
+                  <span class="badge bg-success">ближайший слот: {{ c.first_date|date:"d.m" }} {{ c.first_time|time:"H:i" }}</span>
+                  <span class="badge bg-secondary">загрузка сегодня: {{ c.load_pct }}%</span>
+                </div>
+              </div>
+              {% if can_write %}
+              <a class="btn btn-sm btn-success"
+                 href="{% url 'appointments:booking' %}?patient={{ d.patient.pk }}&specialty={{ d.specialty.pk }}&doctor={{ c.doctor.pk }}&date={{ c.first_date|date:'Y-m-d' }}&direction={{ d.pk }}">
+                Записать
+              </a>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info py-2 mb-0">Подходящих врачей не найдено: нет активных врачей нужной специальности со свободными слотами на ближайшие 7 дней.</div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% empty %}
+<div class="alert alert-light border">Направлений нет.</div>
+{% endfor %}
+{% endblock %}

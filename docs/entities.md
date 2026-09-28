@@ -13,10 +13,14 @@ erDiagram
     Patient ||--o{ Appointment : "записи"
     Patient ||--o{ QueueTicket : "талоны"
     Patient ||--o{ Consultation : "приёмы"
+    Patient ||--o{ Direction : "направления"
 
     Specialty ||--o{ Doctor : "специальность"
     Department ||--o{ Doctor : "отдел"
     Specialty }o--o{ Department : "входит в отдел"
+    Specialty ||--o{ Direction : "цель направления"
+    Doctor ||--o{ Direction : "направил"
+    Direction }o--o| Appointment : "записана"
     Cabinet ||--o{ Doctor : "кабинет"
     Doctor ||--o{ WorkSchedule : "расписание"
     Doctor ||--o{ Appointment : "приём"
@@ -118,6 +122,18 @@ erDiagram
         text comment
         datetime created_at
         datetime updated_at
+    }
+
+    Direction {
+        bigint id PK
+        bigint patient_id FK
+        bigint specialty_id FK "цель (к кому направить)"
+        text reason "Причина направления"
+        bigint from_doctor_id FK "Кто направил (опц.)"
+        bigint created_by_id FK "Кто создал"
+        bigint appointment_id FK "Запись-результат (опц.)"
+        enum status "new / booked / cancelled"
+        datetime created_at
     }
 
     QueueTicket {

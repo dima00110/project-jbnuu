@@ -28,8 +28,13 @@ QUEUE_PERMS = {
     'add_queueticket', 'change_queueticket',
     'view_queueticket', 'delete_queueticket',
 }
+DIRECTION_PERMS = {
+    'add_direction', 'change_direction',
+    'view_direction', 'delete_direction',
+}
 
-ALL_CODES = PATIENT_PERMS | POLICY_PERMS | APPOINTMENT_PERMS | SCHEDULE_PERMS | QUEUE_PERMS
+ALL_CODES = PATIENT_PERMS | POLICY_PERMS | APPOINTMENT_PERMS \
+    | SCHEDULE_PERMS | QUEUE_PERMS | DIRECTION_PERMS
 
 
 class Command(BaseCommand):
@@ -39,14 +44,18 @@ class Command(BaseCommand):
         grants = {
             Roles.REGISTRAR: (
                 PATIENT_PERMS | POLICY_PERMS | APPOINTMENT_PERMS | QUEUE_PERMS
+                # направления: видит все и закрывает записью/отменой, но не создаёт
+                | {'view_direction', 'change_direction'}
             ),
             Roles.ADMINISTRATOR: (
                 PATIENT_PERMS | POLICY_PERMS | APPOINTMENT_PERMS
-                | SCHEDULE_PERMS | QUEUE_PERMS
+                | SCHEDULE_PERMS | QUEUE_PERMS | DIRECTION_PERMS
             ),
             Roles.DOCTOR: {
                 'change_appointment',
                 'view_queueticket', 'change_queueticket',
+                # направления: выписывает по своим приёмам и видит их
+                'add_direction', 'view_direction',
             },
             Roles.MANAGEMENT: {
                 'view_patient', 'view_insurancepolicy',
@@ -54,6 +63,7 @@ class Command(BaseCommand):
                 'view_department',
                 'view_cabinet', 'view_doctor', 'view_workschedule',
                 'view_queueticket',
+                'view_direction',
             },
         }
 

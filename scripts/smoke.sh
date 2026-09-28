@@ -146,12 +146,13 @@ from apps.appointments.models import Appointment
 from apps.patients.models import Patient
 from apps.schedule.models import Cabinet, Department, Doctor, Specialty, WorkSchedule
 Appointment.objects.filter(comment__startswith='[test]').delete()
+Direction.objects.filter(reason__startswith='[test]').delete()
 Patient.objects.filter(notes__startswith='[test]').delete()
 # удаляем вместе с загруженным в смоуке фото (файловые сироты недопустимы)
-for _d in Doctor.objects.filter(user__username='doctor_test'):
+for _d in Doctor.objects.filter(user__username__in=('doctor_test', 'doctor_test2')):
     _d.photo.delete(save=False)
-Doctor.objects.filter(user__username='doctor_test').delete()
-User.objects.filter(username='doctor_test').delete()
+Doctor.objects.filter(user__username__in=('doctor_test', 'doctor_test2')).delete()
+User.objects.filter(username__in=('doctor_test', 'doctor_test2')).delete()
 Specialty.objects.filter(name='Гастроэнтеролог').delete()
 Cabinet.objects.filter(number='999').delete()
 Department.objects.filter(name='Тестовый отдел [test]').delete()
@@ -888,6 +889,159 @@ UP=$(post_file "$BASE/schedule/doctors/${DOC_TEST_ID}/edit/" "$J_ADMIN" \
 check_eq "фото: multipart-загрузка → 302" "302" "${UP%%|*}"
 check_contains "фото: карточка отдаёт /media/doctors/" \
   "$(curl -s "$BASE/doctors/${DOC_TEST_ID}/")" "/media/doctors/"
+
+echo "== 17. Направления к подходящему врачу =="
+# --- setup: второй врач той же специальности (для проверки ранжирования) ---
+TOM_DATE=$(date -d "+1 day" +%F)
+TOM_WD=$(date -d "+1 day" +%u)
+: > "$J_ADMIN"; login admin admin12345 "$J_ADMIN"
+post "$BASE/schedule/doctors/new/" "$J_ADMIN" \
+  --data-urlencode "existing_user=" \
+  --data-urlencode "username=doctor_test2" \
+  --data-urlencode "password=Doctor-2026!" \
+  --data-urlencode "first_name=Тест" \
+  --data-urlencode "last_name=Второв" \
+  --data-urlencode "specialty=${SPEC_ID}" \
+  --data-urlencode "cabinet=" \
+  --data-urlencode "is_active=on" > /dev/null
+# расписание обоих тест-врачей на завтра: у doctor_test2 слот раньше (08:00)
+post "$BASE/schedule/work-schedules/new/" "$J_ADMIN" \
+  --data-urlencode "doctor=${DOC_TEST_ID}" --data-urlencode "weekday=${TOM_WD}" \
+  --data-urlencode "start_time=10:00" --data-urlencode "end_time=12:00" \
+  --data-urlencode "slot_minutes=30" --data-urlencode "valid_from=" --data-urlencode "valid_to=" > /dev/null
+DOC_TEST2_ID=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Doctor; print(Doctor.objects.get(user__username='doctor_test2').id)" \
+  2>/dev/null | tail -n1)
+post "$BASE/schedule/work-schedules/new/" "$J_ADMIN" \
+  --data-urlencode "doctor=${DOC_TEST2_ID}" --data-urlencode "weekday=${TOM_WD}" \
+  --data-urlencode "start_time=08:00" --data-urlencode "end_time=09:00" \
+  --data-urlencode "slot_minutes=30" --data-urlencode "valid_from=" --data-urlencode "valid_to=" > /dev/null
+# направление от врача: свой приём APT2_ID (пациент PAT)
+check_eq "аноним: направления → 302 (login)" "302" \
+  "$(status "$BASE/appointments/directions/" "$J_ANON")"
+check_eq "врач: форма направления по своему приёму → 200" "200" \
+  "$(status "$BASE/appointments/directions/new/?appointment=${APT2_ID}" "$J_DOC1")"
+CREATE_A=$(post "$BASE/appointments/directions/new/?appointment=${APT2_ID}" "$J_DOC1" \
+  --data-urlencode "appointment=${APT2_ID}" \
+  --data-urlencode "specialty=${SPEC_ID}" \
+  --data-urlencode "reason=[test] направление на гастроэнтеролога")
+check_eq "врач: направление уходит в регистратуру (redirect → список)" \
+  "$BASE/appointments/directions/" "${CREATE_A#*|}"
+check_contains "кабинет: кнопка «Направить» на приёме" \
+  "$(body "$BASE/queue/cabinet/?date=${BOOK_DATE}" "$J_DOC1")" "directions/new/?appointment="
+
+# направление администратора с карточки пациента (специальность без врачей)
+HIR_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Specialty; print(Specialty.objects.get(name='Хирург').id)" \
+  2>/dev/null | tail -n1)
+B_PAT=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.patients.models import Patient; print(Patient.objects.filter(notes__startswith='[demo]', is_active=True).first().id)" \
+  2>/dev/null | tail -n1)
+check_eq "админ: направление с карточки пациента → 302" "302" \
+  "$(post "$BASE/appointments/directions/new/?patient=${B_PAT}" "$J_ADMIN" \
+    --data-urlencode "patient=${B_PAT}" \
+    --data-urlencode "specialty=${HIR_PK}" \
+    --data-urlencode "reason=[test] направление к хирургу" | cut -d'|' -f1)"
+
+# видимость: регистратор — все, врач — только свои, руководство — read-only
+DIR_LIST=$(body "$BASE/appointments/directions/" "$J_REG")
+check_contains "регистратор видит направление врача" \
+  "$DIR_LIST" "[test] направление на гастроэнтеролога"
+check_contains "регистратор видит кандидатов (ближайший слот)" \
+  "$DIR_LIST" "ближайший слот"
+check_contains "кандидат: второй тест-врач подобран" "$DIR_LIST" "Второв"
+# ссылки «Записать»: 2 демо-направления (по одному кандидату) + 2 у направления
+# врача (оба тест-врача); направление без врачей (хирург) кнопок не даёт
+check_eq "кнопки «Записать» ведут в запись с direction=" "4" \
+  "$(echo "$DIR_LIST" | grep -c 'direction=')"
+DIR_D1=$(body "$BASE/appointments/directions/" "$J_DOC1")
+check_contains "врач: своё направление в списке" \
+  "$DIR_D1" "[test] направление на гастроэнтеролога"
+check_eq "врач: чужое направление скрыто" "0" \
+  "$(echo "$DIR_D1" | grep -c '\[test\] направление к хирургу')"
+check_eq "руководство: список → 200" "200" \
+  "$(status "$BASE/appointments/directions/" "$J_MGR")"
+check_eq "руководство: кнопок записи нет (read-only)" "0" \
+  "$(body "$BASE/appointments/directions/" "$J_MGR" | grep -c 'direction=')"
+
+# ранжирование: ближайший слот первым (независимый пересчёт ключа)
+check_eq "порядок кандидатов: ближайший слот первым" "ok" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c "
+from datetime import datetime, timedelta
+from django.utils import timezone
+from apps.appointments.routing import find_candidates
+from apps.appointments.slots import generate_slots
+from apps.schedule.models import Doctor, Specialty
+spec = Specialty.objects.get(name='Гастроэнтеролог')
+def first_dt(doc):
+    today = timezone.localdate()
+    for off in range(7):
+        day = today + timedelta(days=off)
+        free = [s for s in generate_slots(doc, day) if not s['busy'] and not s['past']]
+        if free:
+            return datetime.combine(day, free[0]['time'])
+    return datetime.max
+actual = [c['doctor'].user.username for c in find_candidates(spec)]
+expected = sorted(actual, key=lambda u: first_dt(Doctor.objects.get(user__username=u)))
+print('ok' if actual == expected else 'bad')
+" 2>/dev/null | tail -n1)"
+
+# запись по направлению: страница, POST, статус
+A_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.appointments.models import Direction; d=Direction.objects.filter(reason__startswith='[test] направление на гастро').first(); print(d.pk if d else '')" \
+  2>/dev/null | tail -n1)
+A_PAT=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.appointments.models import Direction; print(Direction.objects.get(pk=${A_PK}).patient_id)" \
+  2>/dev/null | tail -n1)
+check_contains "запись по направлению: баннер и предзаполнение" \
+  "$(body "$BASE/appointments/booking/?patient=${A_PAT}&specialty=${SPEC_ID}&doctor=${DOC_TEST2_ID}&date=${TOM_DATE}&direction=${A_PK}" "$J_REG")" \
+  "Оформляется по направлению"
+check_eq "запись по направлению → 302" "302" \
+  "$(post "$BASE/appointments/booking/" "$J_REG" \
+    --data-urlencode "patient=${A_PAT}" \
+    --data-urlencode "doctor=${DOC_TEST2_ID}" \
+    --data-urlencode "visit_date=${TOM_DATE}" \
+    --data-urlencode "slot_start=08:00:00" \
+    --data-urlencode "visit_type=primary" \
+    --data-urlencode "comment=[test] запись по направлению" \
+    --data-urlencode "direction=${A_PK}" | cut -d'|' -f1)"
+check_eq "направление закрыто записью (статус)" "booked" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.appointments.models import Direction; print(Direction.objects.get(pk=${A_PK}).status)" \
+    2>/dev/null | tail -n1)"
+check_eq "направление связано с записью" "1" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.appointments.models import Direction; d=Direction.objects.get(pk=${A_PK}); print(1 if d.appointment_id else 0)" \
+    2>/dev/null | tail -n1)"
+
+# без врачей нужной специальности + отмена + отказы по ролям
+check_contains "специальность без врачей: подсказка" "$DIR_LIST" "Подходящих врачей не найдено"
+B_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.appointments.models import Direction; d=Direction.objects.filter(reason__startswith='[test] направление к хирургу').first(); print(d.pk if d else '')" \
+  2>/dev/null | tail -n1)
+check_eq "регистратор: отмена направления → 302" "302" \
+  "$(post "$BASE/appointments/directions/${B_PK}/cancel/" "$J_REG" | cut -d'|' -f1)"
+check_eq "направление отменено (статус)" "cancelled" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.appointments.models import Direction; print(Direction.objects.get(pk=${B_PK}).status)" \
+    2>/dev/null | tail -n1)"
+# регистрар не выписывает направления — уводит на дашборд
+check_eq "регистратор: создание направления заблокировано (редирект на дашборд)" \
+  "$BASE/" \
+  "$(post "$BASE/appointments/directions/new/" "$J_REG" \
+    --data-urlencode "patient=${B_PAT}" \
+    --data-urlencode "specialty=${HIR_PK}" \
+    --data-urlencode "reason=[test] не должна создаться" | cut -d'|' -f2)"
+# врач не направляет по чужому приёму
+OTHER_APPT=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.appointments.models import Appointment; a=Appointment.objects.exclude(doctor__user__username='doctor1').first(); print(a.pk if a else '')" \
+  2>/dev/null | tail -n1)
+check_contains "врач: чужой приём → отказ (в кабинет)" \
+  "$(post "$BASE/appointments/directions/new/?appointment=${OTHER_APPT}" "$J_DOC1" \
+    --data-urlencode "appointment=${OTHER_APPT}" \
+    --data-urlencode "specialty=${SPEC_ID}" \
+    --data-urlencode "reason=[test] чужой приём" | cut -d'|' -f2)" \
+  "/queue/cabinet/"
 
 echo
 echo "=================================="

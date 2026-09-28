@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Направление — Регистратура{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">📤 Выписать направление</h3>
+  <a href="{% url 'appointments:direction_list' %}" class="btn btn-outline-secondary">← К направлениям</a>
+</div>
+
+<div class="row">
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="mb-3">
+          <div class="text-muted small">Пациент</div>
+          <div class="fw-semibold">{{ patient.full_name }}</div>
+          {% if appt %}
+          <div class="text-muted small">Основание: приём {{ appt.doctor.full_name }},
+            {{ appt.visit_date|date:"d.m.Y" }} {{ appt.slot_start|time:"H:i" }}</div>
+          {% endif %}
+        </div>
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="appointment" value="{{ appt.pk|default:'' }}">
+          {% if form.non_field_errors %}
+          <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+          {% endif %}
+          {% for field in form %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ field.id_for_label }}">
+              {{ field.label }}{% if field.field.required %} <span class="text-danger">*</span>{% endif %}
+            </label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endfor %}
+          <button class="btn btn-primary">Отправить в регистратуру</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -51,6 +51,11 @@
         {{ t.appointment.get_visit_type_display }}
       </span>
     </span>
+    {% if perms.appointments.add_direction %}
+    <a href="{% url 'appointments:direction_create' %}?appointment={{ t.appointment.pk }}"
+       class="btn btn-sm btn-outline-warning"
+       title="Направить пациента к подходящему свободному врачу">Направить</a>
+    {% endif %}
     {% if can_act and t.status != 'completed' and t.status != 'cancelled' and t.status != 'no_show' %}
     <span class="d-flex gap-2">
       {% if t.status == 'waiting' or t.status == 'called' %}

@@ -17,7 +17,7 @@ from django.core.management.base import BaseCommand
 from django.db.models import Q
 
 from apps.accounts.roles import Roles
-from apps.appointments.models import Appointment
+from apps.appointments.models import Appointment, Direction
 from apps.appointments.slots import generate_slots
 from apps.patients.models import InsurancePolicy, Patient
 from apps.schedule.models import Cabinet, Department, Doctor, Specialty, WorkSchedule
@@ -198,6 +198,17 @@ DEMO_DOCTORS = [
 
 DEMO_DOCTOR_USERNAMES = [d[0] for d in DEMO_DOCTORS]
 
+# Направления в регистратуру (статус «новое» — видны регистратору):
+# (фамилия пациента, специальность-цель, причина, кто направил-username)
+DEMO_DIRECTIONS = [
+    ('Рахимов', 'Кардиолог',
+     f'{DEMO_TAG} направление терапевта: уточнить тактику лечения АГ',
+     'doctor1'),
+    ('Каримова', 'Педиатр',
+     f'{DEMO_TAG} направление: плановый осмотр ребёнка',
+     'doctor1'),
+]
+
 # заполненная карточка врача: стаж и био (маркер [demo]); фото не создаём —
 # для карточки работает аватар по инициалам
 DEMO_DOCTOR_INFO = {
@@ -237,6 +248,10 @@ class Command(BaseCommand):
 
         # 2. Очистка демо-данных при --reset
         if reset:
+            # направления ссылаются на пациентов (PROTECT) — удаляем первыми
+            dirs, _ = Direction.objects.filter(
+                reason__startswith=DEMO_TAG,
+            ).delete()
             appts, _ = Appointment.objects.filter(
                 Q(comment__startswith=DEMO_TAG) |
                 Q(doctor__user__username__in=DEMO_DOCTOR_USERNAMES),
@@ -259,7 +274,8 @@ class Command(BaseCommand):
                 doctors__isnull=True,
             ).delete()
             self.stdout.write(
-                f'Удалено: записей — {appts}, пациентов — {patients}, '
+                f'Удалено: направлений — {dirs}, записей — {appts}, '
+                f'пациентов — {patients}, '
                 f'пользователей — {users}, специальностей — {specs}, '
                 f'кабинетов — {cabs}, отделов — {deps}'
             )
@@ -372,14 +388,45 @@ class Command(BaseCommand):
         # 9. История за прошлые 7 дней (для отчётов)
         history_created = self._seed_history(reset)
 
+        # 10. Направления в регистратуру
+        directions_created = self._seed_directions()
+
         total_patients = Patient.objects.filter(notes__startswith=DEMO_TAG).count()
         total_appts = Appointment.objects.filter(comment__startswith=DEMO_TAG).count()
         self.stdout.write(self.style.SUCCESS(
             f'Готово. Пациентов: {total_patients}, записей: {total_appts}; '
             f'за запуск: пользователей — {created_users}, '
             f'расписаний — {schedules_created}, записей — {appts_created}, '
-            f'истории — {history_created}.'
+            f'истории — {history_created}, направлений — {directions_created}.'
         ))
+
+    def _seed_directions(self):
+        """Направления в регистратуру (статус «новое») — идемпотентно."""
+        if Direction.objects.filter(reason__startswith=DEMO_TAG).exists():
+            self.stdout.write('Демо-направления уже есть — пропускаю.')
+            return 0
+        created = 0
+        for patient_last, spec_name, reason, from_username in DEMO_DIRECTIONS:
+            patient = Patient.objects.filter(
+                notes__startswith=DEMO_TAG,
+                last_name=patient_last, is_active=True,
+            ).first()
+            specialty = Specialty.objects.filter(name=spec_name).first()
+            from_doctor = Doctor.objects.filter(
+                user__username=from_username,
+            ).select_related('user').first()
+            if patient is None or specialty is None:
+                continue
+            Direction.objects.create(
+                patient=patient,
+                specialty=specialty,
+                reason=reason,
+                from_doctor=from_doctor,
+                created_by=from_doctor.user if from_doctor else None,
+            )
+            created += 1
+        self.stdout.write(self.style.SUCCESS(f'Создано демо-направлений: {created}'))
+        return created
 
     def _seed_appointments(self, reset):
         """До 3 записей на сегодня и на завтра по свободным слотам демо-врачей."""

@@ -9,6 +9,9 @@
     {% if perms.appointments.add_appointment %}
     <a href="{% url 'appointments:booking' %}?patient={{ patient.pk }}" class="btn btn-success">Записать на приём</a>
     {% endif %}
+    {% if perms.appointments.add_direction and not user.doctor_profile %}
+    <a href="{% url 'appointments:direction_create' %}?patient={{ patient.pk }}" class="btn btn-outline-warning">Направить к врачу</a>
+    {% endif %}
     {% if can_edit %}
     <a href="{% url 'patients:patient_edit' patient.pk %}" class="btn btn-primary">Редактировать</a>
     <form method="post" action="{% url 'patients:patient_deactivate' patient.pk %}"
