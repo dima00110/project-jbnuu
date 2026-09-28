@@ -10,7 +10,7 @@ from django.utils import timezone
 from apps.accounts.decorators import role_required
 from apps.accounts.roles import Roles, has_role
 from apps.appointments.models import Appointment
-from apps.schedule.models import Department, Doctor
+from apps.schedule.models import Department, Doctor, Specialty
 
 REPORT_ROLES = (Roles.ADMINISTRATOR, Roles.MANAGEMENT, Roles.DOCTOR)
 ALL_DOCTORS_ROLES = (Roles.ADMINISTRATOR, Roles.MANAGEMENT)
@@ -72,10 +72,21 @@ def _department(request, can_pick):
     return None
 
 
+def _specialty(request, can_pick):
+    """Фильтр по специальности (?specialty=), та же логика, что у отдела."""
+    if not can_pick:
+        return None
+    raw = request.GET.get('specialty')
+    if raw and raw.isdigit():
+        return Specialty.objects.filter(pk=raw).first()
+    return None
+
+
 def _pick_context():
-    """Общее для форм фильтров: отделы и врачи для селектов."""
+    """Общее для форм фильтров: отделы, специальности и врачи для селектов."""
     return {
         'departments': Department.objects.all(),
+        'specialties': Specialty.objects.all(),
         'doctors': Doctor.objects.filter(is_active=True).select_related('user'),
     }
 
@@ -89,12 +100,14 @@ def reports_hub(request):
     if error:
         return redirect('dashboard')
     department = _department(request, can_pick)
+    specialty = _specialty(request, can_pick)
     period = f'?from={date_from:%Y-%m-%d}&to={date_to:%Y-%m-%d}'
     context = {
         'date_from': date_from,
         'date_to': date_to,
         'doctor': doctor,
         'department': department,
+        'specialty': specialty,
         'can_pick': can_pick,
         'period': period,
     }
@@ -111,14 +124,18 @@ def report_load(request):
     if error:
         return redirect('dashboard')
     department = _department(request, can_pick)
+    specialty = _specialty(request, can_pick)
 
     qs = Appointment.objects.filter(
         visit_date__range=(date_from, date_to),
     )
     if doctor:
         qs = qs.filter(doctor=doctor)
-    elif department:
-        qs = qs.filter(doctor__department=department)
+    else:
+        if department:
+            qs = qs.filter(doctor__department=department)
+        if specialty:
+            qs = qs.filter(doctor__specialty=specialty)
 
     rows = list(
         qs.values('doctor_id')
@@ -154,6 +171,7 @@ def report_load(request):
         'date_to': date_to,
         'doctor': doctor,
         'department': department,
+        'specialty': specialty,
         'rows': rows,
         'can_pick': can_pick,
     }
@@ -170,6 +188,7 @@ def report_no_shows(request):
     if error:
         return redirect('dashboard')
     department = _department(request, can_pick)
+    specialty = _specialty(request, can_pick)
 
     qs = Appointment.objects.filter(
         visit_date__range=(date_from, date_to),
@@ -179,8 +198,11 @@ def report_no_shows(request):
     ).order_by('-visit_date', '-slot_start')
     if doctor:
         qs = qs.filter(doctor=doctor)
-    elif department:
-        qs = qs.filter(doctor__department=department)
+    else:
+        if department:
+            qs = qs.filter(doctor__department=department)
+        if specialty:
+            qs = qs.filter(doctor__specialty=specialty)
 
     appointments = list(qs)
     counts = dict(
@@ -195,6 +217,7 @@ def report_no_shows(request):
         'date_to': date_to,
         'doctor': doctor,
         'department': department,
+        'specialty': specialty,
         'appointments': appointments,
         'counts': counts,
         'can_pick': can_pick,
@@ -212,12 +235,16 @@ def report_flow(request):
     if error:
         return redirect('dashboard')
     department = _department(request, can_pick)
+    specialty = _specialty(request, can_pick)
 
     qs = Appointment.objects.filter(visit_date__range=(date_from, date_to))
     if doctor:
         qs = qs.filter(doctor=doctor)
-    elif department:
-        qs = qs.filter(doctor__department=department)
+    else:
+        if department:
+            qs = qs.filter(doctor__department=department)
+        if specialty:
+            qs = qs.filter(doctor__specialty=specialty)
 
     by_day = {
         r['visit_date']: r
@@ -252,6 +279,7 @@ def report_flow(request):
         'date_to': date_to,
         'doctor': doctor,
         'department': department,
+        'specialty': specialty,
         'days': days,
         'peak': peak,
         'can_pick': can_pick,

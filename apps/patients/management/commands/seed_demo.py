@@ -167,6 +167,13 @@ DEMO_DOCTOR_DEPARTMENT = {
     'doctor3': 'Детское отделение',
 }
 
+# какие специальности входят в отдел (для валидации связки)
+DEMO_DEPARTMENT_SPECIALTIES = {
+    'Терапевтическое отделение': ['Терапевт'],
+    'Кардиологическое отделение': ['Кардиолог'],
+    'Детское отделение': ['Педиатр'],
+}
+
 _MON_FRI = (1, 2, 3, 4, 5)
 
 # Врачи и их недельное расписание:
@@ -280,6 +287,11 @@ class Command(BaseCommand):
             )
         for name, code in DEMO_DEPARTMENTS:
             Department.objects.get_or_create(name=name, defaults={'code': code})
+        # соответствие «отдел ⇄ специальность» (add — не затираем правки админа)
+        for dep_name, spec_names in DEMO_DEPARTMENT_SPECIALTIES.items():
+            Department.objects.get(name=dep_name).specialties.add(
+                *Specialty.objects.filter(name__in=spec_names),
+            )
 
         # 6. Врачи (профили поверх пользователей)
         for username, spec_name, cab_number, _slots in DEMO_DOCTORS:

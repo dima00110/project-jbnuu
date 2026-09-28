@@ -9,12 +9,24 @@
 </div>
 
 {% if departments %}
-<nav class="mb-3 d-flex gap-2 flex-wrap" aria-label="Фильтр по отделам">
+<nav class="mb-2 d-flex gap-2 flex-wrap" aria-label="Фильтр по отделам">
   <a class="btn btn-sm {% if department is None %}btn-primary{% else %}btn-outline-primary{% endif %}"
-     href="{% url 'schedule:doctor_list' %}">Все отделы</a>
+     href="{% url 'schedule:doctor_list' %}{% if specialty %}?specialty={{ specialty.pk }}{% endif %}">Все отделы</a>
   {% for dep in departments %}
   <a class="btn btn-sm {% if department and department.pk == dep.pk %}btn-primary{% else %}btn-outline-primary{% endif %}"
-     href="{% url 'schedule:doctor_list' %}?department={{ dep.pk }}">{{ dep.name }}</a>
+     href="{% url 'schedule:doctor_list' %}?department={{ dep.pk }}{% if specialty %}&specialty={{ specialty.pk }}{% endif %}">{{ dep.name }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+
+{% if specialties %}
+<nav class="mb-3 d-flex gap-2 flex-wrap" aria-label="Фильтр по специальностям">
+  <span class="text-muted small align-self-center">Специальность:</span>
+  <a class="btn btn-sm btn-outline-secondary {% if specialty is None %}active{% endif %}"
+     href="{% url 'schedule:doctor_list' %}{% if department %}?department={{ department.pk }}{% endif %}">Все</a>
+  {% for sp in specialties %}
+  <a class="btn btn-sm btn-outline-secondary {% if specialty and specialty.pk == sp.pk %}active{% endif %}"
+     href="{% url 'schedule:doctor_list' %}?specialty={{ sp.pk }}{% if department %}&department={{ department.pk }}{% endif %}">{{ sp.name }}</a>
   {% endfor %}
 </nav>
 {% endif %}

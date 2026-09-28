@@ -8,7 +8,7 @@ from .models import Cabinet, Department, Doctor, Specialty, WorkSchedule
 def _apply_bootstrap(form):
     for name, field in form.fields.items():
         css = field.widget.attrs.get('class', '')
-        if isinstance(field.widget, forms.Select):
+        if isinstance(field.widget, (forms.Select, forms.SelectMultiple)):
             field.widget.attrs['class'] = f'{css} form-select'.strip()
         elif not isinstance(field.widget, (forms.CheckboxInput, forms.RadioSelect)):
             field.widget.attrs['class'] = f'{css} form-control'.strip()
@@ -37,7 +37,12 @@ class CabinetForm(forms.ModelForm):
 class DepartmentForm(forms.ModelForm):
     class Meta:
         model = Department
-        fields = ['name', 'code']
+        fields = ['name', 'code', 'specialties']
+        widgets = {
+            'specialties': forms.SelectMultiple(
+                attrs={'size': '6', 'class': 'form-select'},
+            ),
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

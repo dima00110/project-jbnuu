@@ -30,11 +30,23 @@
       {% endfor %}
     </select>
   </div>
+  <div>
+    <label class="form-label small mb-1">Специальность</label>
+    <select name="specialty" class="form-select">
+      <option value="">— все —</option>
+      {% for sp in specialties %}
+      <option value="{{ sp.pk }}" {% if specialty and specialty.pk == sp.pk %}selected{% endif %}>
+        {{ sp.name }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
   {% endif %}
   <button class="btn btn-outline-primary">Показать</button>
   <span class="text-muted small align-self-center">
     {{ date_from|date:"d.m.Y" }} — {{ date_to|date:"d.m.Y" }}
     {% if doctor %} · {{ doctor.full_name }}{% endif %}
     {% if department %} · {{ department }}{% endif %}
+    {% if specialty %} · {{ specialty }}{% endif %}
   </span>
 </form>

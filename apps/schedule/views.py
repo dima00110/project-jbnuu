@@ -17,7 +17,9 @@ from .models import Cabinet, Department, Doctor, Specialty, WorkSchedule
 @login_required
 @role_required(Roles.ADMINISTRATOR, Roles.MANAGEMENT)
 def specialty_list(request):
-    items = Specialty.objects.all()
+    items = Specialty.objects.prefetch_related(
+        'doctors__user', 'doctors__department', 'departments',
+    )
     return render(request, 'schedule/specialty_list.html', {'items': items})
 
 
@@ -62,7 +64,7 @@ def specialty_edit(request, pk):
 @login_required
 @role_required(Roles.ADMINISTRATOR, Roles.MANAGEMENT)
 def department_list(request):
-    items = Department.objects.prefetch_related('doctors__user')
+    items = Department.objects.prefetch_related('doctors__user', 'specialties')
     return render(request, 'schedule/department_list.html', {'items': items})
 
 
@@ -166,6 +168,7 @@ def cabinet_edit(request, pk):
 @role_required(Roles.ADMINISTRATOR, Roles.MANAGEMENT)
 def doctor_list(request):
     departments = Department.objects.all()
+    specialties = Specialty.objects.all()
     items = Doctor.objects.select_related(
         'user', 'specialty', 'department', 'cabinet',
     )
@@ -176,10 +179,19 @@ def doctor_list(request):
     )
     if department is not None:
         items = items.filter(department=department)
+    raw_spec = request.GET.get('specialty')
+    specialty = (
+        Specialty.objects.filter(pk=raw_spec).first()
+        if raw_spec and raw_spec.isdigit() else None
+    )
+    if specialty is not None:
+        items = items.filter(specialty=specialty)
     return render(request, 'schedule/doctor_list.html', {
         'items': items,
         'departments': departments,
         'department': department,
+        'specialties': specialties,
+        'specialty': specialty,
     })
 
 
@@ -331,6 +343,44 @@ def floor_guide(request):
         'floor': floor,
         'departments': departments,
         'department': department,
+    })
+
+
+# --- Структура: отдел → специальность → врачи ----------------------------
+
+
+@login_required
+def structure(request):
+    """
+    Иерархия «отдел → специальность → врачи» для навигации.
+    Открыта всем вошедшим (как справочник этажей).
+    """
+    departments = Department.objects.prefetch_related(
+        'specialties', 'doctors__user', 'doctors__specialty',
+    ).order_by('name')
+
+    sections = []
+    for dep in departments:
+        groups = []
+        declared = set()
+        for spec in dep.specialties.all():
+            declared.add(spec.pk)
+            groups.append({
+                'specialty': spec,
+                'doctors': [d for d in dep.doctors.all()
+                            if d.specialty_id == spec.pk],
+            })
+        # защита от расхождений: врачи с необъявленной в отделе специальностью
+        other = [d for d in dep.doctors.all() if d.specialty_id not in declared]
+        sections.append({'department': dep, 'groups': groups, 'other': other})
+
+    unassigned = Doctor.objects.filter(
+        department__isnull=True,
+    ).select_related('user', 'specialty').order_by('specialty__name')
+
+    return render(request, 'schedule/structure.html', {
+        'sections': sections,
+        'unassigned': unassigned,
     })
 
 

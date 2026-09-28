@@ -22,6 +22,11 @@ class Department(models.Model):
 
     name = models.CharField('Название', max_length=100, unique=True)
     code = models.CharField('Код', max_length=20, blank=True)
+    specialties = models.ManyToManyField(
+        Specialty, related_name='departments', blank=True,
+        verbose_name='Специальности',
+        help_text='Специальности, входящие в отдел',
+    )
 
     class Meta:
         verbose_name = 'Отдел'
@@ -87,6 +92,19 @@ class Doctor(models.Model):
         if u.last_name or u.first_name:
             return ' '.join(p for p in (u.last_name, u.first_name) if p)
         return u.username
+
+    def clean(self):
+        """Специальность врача должна входить в выбранный отдел."""
+        super().clean()
+        if self.department_id and self.specialty_id:
+            allowed = self.department.specialties.values_list('pk', flat=True)
+            if self.specialty_id not in allowed:
+                raise ValidationError({
+                    'department': (
+                        f'Специальность «{self.specialty}» не входит '
+                        f'в отдел «{self.department}».'
+                    ),
+                })
 
 
 class WorkSchedule(models.Model):

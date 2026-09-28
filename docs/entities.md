@@ -16,6 +16,7 @@ erDiagram
 
     Specialty ||--o{ Doctor : "специальность"
     Department ||--o{ Doctor : "отдел"
+    Specialty }o--o{ Department : "входит в отдел"
     Cabinet ||--o{ Doctor : "кабинет"
     Doctor ||--o{ WorkSchedule : "расписание"
     Doctor ||--o{ Appointment : "приём"
@@ -71,6 +72,7 @@ erDiagram
         bigint id PK
         string name "Название"
         string code "Код"
+        specialties M2M "специальности отдела"
     }
 
     Cabinet {

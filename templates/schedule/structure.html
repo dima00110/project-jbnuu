@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Структура — Регистратура{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h3 class="mb-0">🏢 Структура: отдел → специальность → врачи</h3>
+  {% if perms.schedule.view_specialty %}
+  <a href="{% url 'schedule:hub' %}" class="btn btn-outline-secondary btn-sm">← Справочники</a>
+  {% endif %}
+</div>
+
+{% for s in sections %}
+<div class="mb-4">
+  <h5 class="border-bottom pb-2">
+    {{ s.department.name }}
+    <span class="text-muted fs-6">({{ s.department.doctors.all|length }} врач.)</span>
+  </h5>
+  {% if s.groups or s.other %}
+  <div class="row g-3">
+    {% for g in s.groups %}
+    <div class="col-md-4 col-lg-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="fw-semibold">{{ g.specialty }}</div>
+          <ul class="list-unstyled mb-0 mt-2">
+            {% for d in g.doctors %}
+            <li class="mb-1">
+              {{ d.full_name }}
+              {% if not d.is_active %}<span class="badge bg-secondary">не работает</span>{% endif %}
+              {% if d.cabinet %}<span class="text-muted small d-block">каб. {{ d.cabinet.number }}</span>{% endif %}
+            </li>
+            {% empty %}
+            <li class="text-muted small">Нет врачей</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    {% if s.other %}
+    <div class="col-md-4 col-lg-3">
+      <div class="card shadow-sm h-100 border-warning">
+        <div class="card-body">
+          <div class="fw-semibold text-warning-emphasis">Не отнесены к специальностям отдела</div>
+          <ul class="list-unstyled mb-0 mt-2">
+            {% for d in s.other %}
+            <li class="mb-1">
+              {{ d.full_name }}
+              <span class="text-muted small d-block">{{ d.specialty }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="text-muted">Отдел пуст: нет специальностей и врачей.</div>
+  {% endif %}
+</div>
+{% empty %}
+<div class="alert alert-info">Отделы не настроены.</div>
+{% endfor %}
+
+<div class="mb-4">
+  <h5 class="border-bottom pb-2">Врачи без отдела
+    <span class="text-muted fs-6">({{ unassigned|length }})</span>
+  </h5>
+  {% if unassigned %}
+  <ul class="mb-0">
+    {% for d in unassigned %}
+    <li class="mb-1">
+      {{ d.full_name }}
+      <span class="text-muted small">— {{ d.specialty }}</span>
+      {% if d.cabinet %}<span class="text-muted small">· каб. {{ d.cabinet.number }}</span>{% endif %}
+      {% if not d.is_active %}<span class="badge bg-secondary">не работает</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="text-muted">Все врачи распределены по отделам.</div>
+  {% endif %}
+</div>
+{% endblock %}

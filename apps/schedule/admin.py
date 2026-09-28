@@ -13,6 +13,7 @@ class SpecialtyAdmin(admin.ModelAdmin):
 class DepartmentAdmin(admin.ModelAdmin):
     list_display = ('name', 'code')
     search_fields = ('name', 'code')
+    filter_horizontal = ('specialties',)
 
 
 @admin.register(Cabinet)

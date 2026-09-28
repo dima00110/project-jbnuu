@@ -13,7 +13,17 @@ PASS=0
 FAIL=0
 
 cleanup() {
-  [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null
+  if [ -n "$SERVER_PID" ]; then
+    kill "$SERVER_PID" 2>/dev/null
+    # ждём graceful-выход, иначе следующий прогон может подхватить
+    # умирающий сервер по уже открытому порту
+    for _ in $(seq 1 20); do
+      kill -0 "$SERVER_PID" 2>/dev/null || break
+      sleep 0.1
+    done
+    kill -9 "$SERVER_PID" 2>/dev/null
+    wait "$SERVER_PID" 2>/dev/null
+  fi
   rm -rf "$COOKIES"
 }
 trap cleanup EXIT
@@ -57,6 +67,14 @@ post() {  # url jar [csrf-без токена: key=val...] -> "code|redirect_url
     -b "$jar" -c "$jar" -H "Referer: $url" -X POST \
     --data-urlencode "csrfmiddlewaretoken=$token" "$@" "$url")
   echo "$out"
+}
+
+post_body() {  # url jar [key=val...] -> html-тело ответа POST (для проверки ошибок)
+  local url=$1 jar=$2; shift 2
+  local token
+  token=$(grep csrftoken "$jar" | awk '{print $7}' | tail -n1)
+  curl -s -b "$jar" -c "$jar" -H "Referer: $url" -X POST \
+    --data-urlencode "csrfmiddlewaretoken=$token" "$@" "$url"
 }
 
 login() {  # username password jar
@@ -709,6 +727,83 @@ check_contains "отчёт загрузки: колонка «Отдел»" \
   "$(body "$BASE/reports/load/?from=${P_FROM}&to=${P_TO}" "$J_ADMIN")" "<th>Отдел</th>"
 check_eq "doctor: селектор отдела скрыт" "0" \
   "$(body "$BASE/reports/" "$J_DOC1" | grep -c 'name="department"')"
+
+echo "== 15. Отделы и специальности =="
+check_eq "аноним: /schedule/structure/ → 302 (login)" "302" \
+  "$(status "$BASE/schedule/structure/" "$J_ANON")"
+check_eq "registrar: структура → 200 (все вошедшие)" "200" \
+  "$(status "$BASE/schedule/structure/" "$J_REG")"
+STRUCT=$(body "$BASE/schedule/structure/" "$J_ADMIN")
+check_contains "структура: отдел" "$STRUCT" "Терапевтическое отделение"
+check_contains "структура: специальность" "$STRUCT" "Терапевт"
+check_contains "структура: врач" "$STRUCT" "Орлов"
+check_contains "структура: секция «без отдела»" "$STRUCT" "Врачи без отдела"
+check_contains "ссылка «Структура» в хабе" \
+  "$(body "$BASE/schedule/" "$J_ADMIN")" "/schedule/structure/"
+
+SPEC_PAGE=$(body "$BASE/schedule/specialties/" "$J_ADMIN")
+check_contains "специальности: врач закреплён" "$SPEC_PAGE" "Орлов"
+check_contains "специальности: колонка «Отделы»" "$SPEC_PAGE" "Отделы"
+check_contains "отделы: колонка «Специальности»" \
+  "$(body "$BASE/schedule/departments/" "$J_ADMIN")" "Специальности"
+
+# комбинированный фильтр списка врачей
+THERA_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Department; print(Department.objects.get(name='Терапевтическое отделение').pk)" \
+  2>/dev/null | tail -n1)
+THERA_SPEC_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Specialty; print(Specialty.objects.get(name='Терапевт').pk)" \
+  2>/dev/null | tail -n1)
+KAR_SPEC_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Specialty; print(Specialty.objects.get(name='Кардиолог').pk)" \
+  2>/dev/null | tail -n1)
+DOCS_SPEC=$(body "$BASE/schedule/doctors/?specialty=${THERA_SPEC_PK}" "$J_ADMIN")
+check_contains "врачи ?specialty=: Орлов виден" "$DOCS_SPEC" "Орлов"
+check_eq "врачи ?specialty=: Каримов скрыт" "0" \
+  "$(echo "$DOCS_SPEC" | grep -c 'Каримов')"
+check_eq "врачи ?department=&specialty= (комбо) → 200" "200" \
+  "$(status "$BASE/schedule/doctors/?department=${THERA_PK}&specialty=${THERA_SPEC_PK}" "$J_ADMIN")"
+
+# валидация сочетания «специальность ↔ отдел»
+DOC1_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Doctor; print(Doctor.objects.get(user__username='doctor1').pk)" \
+  2>/dev/null | tail -n1)
+DOC1_CAB=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Doctor; print(Doctor.objects.get(user__username='doctor1').cabinet_id or '')" \
+  2>/dev/null | tail -n1)
+BAD_EDIT=$(post "$BASE/schedule/doctors/${DOC1_PK}/edit/" "$J_ADMIN" \
+  --data-urlencode "existing_user=" \
+  --data-urlencode "specialty=${KAR_SPEC_PK}" \
+  --data-urlencode "department=${THERA_PK}" \
+  --data-urlencode "cabinet=${DOC1_CAB}" \
+  --data-urlencode "is_active=on")
+check_eq "несочетаемая пара → 200 с ошибкой" "200" "${BAD_EDIT%%|*}"
+BAD_BODY=$(post_body "$BASE/schedule/doctors/${DOC1_PK}/edit/" "$J_ADMIN" \
+  --data-urlencode "existing_user=" \
+  --data-urlencode "specialty=${KAR_SPEC_PK}" \
+  --data-urlencode "department=${THERA_PK}" \
+  --data-urlencode "cabinet=${DOC1_CAB}" \
+  --data-urlencode "is_active=on")
+check_contains "текст ошибки валидации" "$BAD_BODY" "не входит"
+check_eq "врач не изменён при ошибке" "Терапевт" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.schedule.models import Doctor; print(Doctor.objects.get(user__username='doctor1').specialty.name)" \
+    2>/dev/null | tail -n1)"
+GOOD_EDIT=$(post "$BASE/schedule/doctors/${DOC1_PK}/edit/" "$J_ADMIN" \
+  --data-urlencode "existing_user=" \
+  --data-urlencode "specialty=${THERA_SPEC_PK}" \
+  --data-urlencode "department=${THERA_PK}" \
+  --data-urlencode "cabinet=${DOC1_CAB}" \
+  --data-urlencode "is_active=on")
+check_eq "сочетаемая пара → 302" "302" "${GOOD_EDIT%%|*}"
+
+# отчёты: разрез по специальности
+RSPEC=$(body "$BASE/reports/load/?from=${P_FROM}&to=${P_TO}&specialty=${KAR_SPEC_PK}" "$J_ADMIN")
+check_contains "отчёт ?specialty=: строка Каримова" "$RSPEC" "text-muted small\">(Кардиолог)"
+check_eq "отчёт ?specialty=: Орлов без строки" "0" \
+  "$(echo "$RSPEC" | grep -c 'text-muted small\">(Терапевт)')"
+check_eq "doctor: селектор специальности скрыт" "0" \
+  "$(body "$BASE/reports/" "$J_DOC1" | grep -c 'name="specialty"')"
 
 echo
 echo "=================================="

@@ -8,6 +8,8 @@ urlpatterns = [
     path('', views.hub, name='hub'),
     # кабинеты по этажам (справочная, открыта всем вошедшим)
     path('floors/', views.floor_guide, name='floor_guide'),
+    # структура: отдел → специальность → врачи
+    path('structure/', views.structure, name='structure'),
     # специальности
     path('specialties/', views.specialty_list, name='specialty_list'),
     path('specialties/new/', views.specialty_create, name='specialty_create'),
