@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <h3 class="mb-0">Неявки за период</h3>
-  <a href="{% url 'reports:hub' %}?from={{ date_from|date:'Y-m-d' }}&to={{ date_to|date:'Y-m-d' }}"
+  <a href="{% url 'reports:hub' %}?from={{ date_from|date:'Y-m-d' }}&to={{ date_to|date:'Y-m-d' }}{% if doctor %}&doctor={{ doctor.pk }}{% endif %}{% if department %}&department={{ department.pk }}{% endif %}"
      class="btn btn-outline-secondary btn-sm">← Все отчёты</a>
 </div>
 

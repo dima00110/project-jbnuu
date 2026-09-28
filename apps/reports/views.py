@@ -10,7 +10,7 @@ from django.utils import timezone
 from apps.accounts.decorators import role_required
 from apps.accounts.roles import Roles, has_role
 from apps.appointments.models import Appointment
-from apps.schedule.models import Doctor
+from apps.schedule.models import Department, Doctor
 
 REPORT_ROLES = (Roles.ADMINISTRATOR, Roles.MANAGEMENT, Roles.DOCTOR)
 ALL_DOCTORS_ROLES = (Roles.ADMINISTRATOR, Roles.MANAGEMENT)
@@ -59,6 +59,27 @@ def _doctor_scope(request):
     return profile, False, False
 
 
+def _department(request, can_pick):
+    """
+    Фильтр по отделу (?department=) для админа/руководства.
+    Врачу (can_pick=False) игнорируется — у него жёстко свой профиль.
+    """
+    if not can_pick:
+        return None
+    raw = request.GET.get('department')
+    if raw and raw.isdigit():
+        return Department.objects.filter(pk=raw).first()
+    return None
+
+
+def _pick_context():
+    """Общее для форм фильтров: отделы и врачи для селектов."""
+    return {
+        'departments': Department.objects.all(),
+        'doctors': Doctor.objects.filter(is_active=True).select_related('user'),
+    }
+
+
 @login_required
 @role_required(*REPORT_ROLES)
 def reports_hub(request):
@@ -67,15 +88,17 @@ def reports_hub(request):
     doctor, can_pick, error = _doctor_scope(request)
     if error:
         return redirect('dashboard')
+    department = _department(request, can_pick)
     period = f'?from={date_from:%Y-%m-%d}&to={date_to:%Y-%m-%d}'
     context = {
         'date_from': date_from,
         'date_to': date_to,
         'doctor': doctor,
+        'department': department,
         'can_pick': can_pick,
         'period': period,
-        'doctors': Doctor.objects.filter(is_active=True).select_related('user'),
     }
+    context.update(_pick_context())
     return render(request, 'reports/hub.html', context)
 
 
@@ -87,12 +110,15 @@ def report_load(request):
     doctor, can_pick, error = _doctor_scope(request)
     if error:
         return redirect('dashboard')
+    department = _department(request, can_pick)
 
     qs = Appointment.objects.filter(
         visit_date__range=(date_from, date_to),
     )
     if doctor:
         qs = qs.filter(doctor=doctor)
+    elif department:
+        qs = qs.filter(doctor__department=department)
 
     rows = list(
         qs.values('doctor_id')
@@ -112,7 +138,7 @@ def report_load(request):
         d.pk: d
         for d in Doctor.objects.filter(
             pk__in=[r['doctor_id'] for r in rows],
-        ).select_related('user', 'specialty', 'cabinet')
+        ).select_related('user', 'specialty', 'department', 'cabinet')
     }
     for r in rows:
         d = doctors.get(r['doctor_id'])
@@ -127,10 +153,11 @@ def report_load(request):
         'date_from': date_from,
         'date_to': date_to,
         'doctor': doctor,
+        'department': department,
         'rows': rows,
         'can_pick': can_pick,
-        'doctors': Doctor.objects.filter(is_active=True).select_related('user'),
     }
+    context.update(_pick_context())
     return render(request, 'reports/load.html', context)
 
 
@@ -142,15 +169,18 @@ def report_no_shows(request):
     doctor, can_pick, error = _doctor_scope(request)
     if error:
         return redirect('dashboard')
+    department = _department(request, can_pick)
 
     qs = Appointment.objects.filter(
         visit_date__range=(date_from, date_to),
         status=Appointment.Status.NO_SHOW,
     ).select_related(
-        'patient', 'doctor__user', 'doctor__specialty',
+        'patient', 'doctor__user', 'doctor__specialty', 'doctor__department',
     ).order_by('-visit_date', '-slot_start')
     if doctor:
         qs = qs.filter(doctor=doctor)
+    elif department:
+        qs = qs.filter(doctor__department=department)
 
     appointments = list(qs)
     counts = dict(
@@ -164,11 +194,12 @@ def report_no_shows(request):
         'date_from': date_from,
         'date_to': date_to,
         'doctor': doctor,
+        'department': department,
         'appointments': appointments,
         'counts': counts,
         'can_pick': can_pick,
-        'doctors': Doctor.objects.filter(is_active=True).select_related('user'),
     }
+    context.update(_pick_context())
     return render(request, 'reports/no_shows.html', context)
 
 
@@ -180,10 +211,13 @@ def report_flow(request):
     doctor, can_pick, error = _doctor_scope(request)
     if error:
         return redirect('dashboard')
+    department = _department(request, can_pick)
 
     qs = Appointment.objects.filter(visit_date__range=(date_from, date_to))
     if doctor:
         qs = qs.filter(doctor=doctor)
+    elif department:
+        qs = qs.filter(doctor__department=department)
 
     by_day = {
         r['visit_date']: r
@@ -217,9 +251,10 @@ def report_flow(request):
         'date_from': date_from,
         'date_to': date_to,
         'doctor': doctor,
+        'department': department,
         'days': days,
         'peak': peak,
         'can_pick': can_pick,
-        'doctors': Doctor.objects.filter(is_active=True).select_related('user'),
     }
+    context.update(_pick_context())
     return render(request, 'reports/flow.html', context)

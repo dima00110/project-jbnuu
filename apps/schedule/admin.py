@@ -1,10 +1,16 @@
 from django.contrib import admin
 
-from .models import Cabinet, Doctor, Specialty, WorkSchedule
+from .models import Cabinet, Department, Doctor, Specialty, WorkSchedule
 
 
 @admin.register(Specialty)
 class SpecialtyAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code')
+    search_fields = ('name', 'code')
+
+
+@admin.register(Department)
+class DepartmentAdmin(admin.ModelAdmin):
     list_display = ('name', 'code')
     search_fields = ('name', 'code')
 

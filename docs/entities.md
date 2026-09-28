@@ -15,6 +15,7 @@ erDiagram
     Patient ||--o{ Consultation : "приёмы"
 
     Specialty ||--o{ Doctor : "специальность"
+    Department ||--o{ Doctor : "отдел"
     Cabinet ||--o{ Doctor : "кабинет"
     Doctor ||--o{ WorkSchedule : "расписание"
     Doctor ||--o{ Appointment : "приём"
@@ -66,6 +67,12 @@ erDiagram
         string code "Код"
     }
 
+    Department {
+        bigint id PK
+        string name "Название"
+        string code "Код"
+    }
+
     Cabinet {
         bigint id PK
         string number "Номер кабинета"
@@ -77,8 +84,8 @@ erDiagram
         bigint id PK
         bigint user_id FK
         bigint specialty_id FK
+        bigint department_id FK "Отдел (опц.)"
         bigint cabinet_id FK
-        string phone_ext "Внутренний телефон"
         boolean is_active
     }
 

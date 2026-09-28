@@ -7,8 +7,8 @@ from apps.accounts.decorators import role_required
 from apps.accounts.roles import Roles
 
 
-from .forms import CabinetForm, DoctorForm, SpecialtyForm, WorkScheduleForm
-from .models import Cabinet, Doctor, Specialty, WorkSchedule
+from .forms import CabinetForm, DepartmentForm, DoctorForm, SpecialtyForm, WorkScheduleForm
+from .models import Cabinet, Department, Doctor, Specialty, WorkSchedule
 
 
 # --- Специальности -------------------------------------------------------
@@ -53,6 +53,51 @@ def specialty_edit(request, pk):
     return render(request, 'schedule/form.html', {
         'form': form, 'title': f'Специальность: {item}',
         'back_url': 'schedule:specialty_list',
+    })
+
+
+# --- Отделы ---------------------------------------------------------------
+
+
+@login_required
+@role_required(Roles.ADMINISTRATOR, Roles.MANAGEMENT)
+def department_list(request):
+    items = Department.objects.prefetch_related('doctors__user')
+    return render(request, 'schedule/department_list.html', {'items': items})
+
+
+@login_required
+@role_required(Roles.ADMINISTRATOR)
+def department_create(request):
+    if request.method == 'POST':
+        form = DepartmentForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Отдел добавлен.')
+            return redirect('schedule:department_list')
+    else:
+        form = DepartmentForm()
+    return render(request, 'schedule/form.html', {
+        'form': form, 'title': 'Новый отдел',
+        'back_url': 'schedule:department_list',
+    })
+
+
+@login_required
+@role_required(Roles.ADMINISTRATOR)
+def department_edit(request, pk):
+    item = get_object_or_404(Department, pk=pk)
+    if request.method == 'POST':
+        form = DepartmentForm(request.POST, instance=item)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Отдел обновлён.')
+            return redirect('schedule:department_list')
+    else:
+        form = DepartmentForm(instance=item)
+    return render(request, 'schedule/form.html', {
+        'form': form, 'title': f'Отдел: {item}',
+        'back_url': 'schedule:department_list',
     })
 
 
@@ -120,8 +165,22 @@ def cabinet_edit(request, pk):
 @login_required
 @role_required(Roles.ADMINISTRATOR, Roles.MANAGEMENT)
 def doctor_list(request):
-    items = Doctor.objects.select_related('user', 'specialty', 'cabinet')
-    return render(request, 'schedule/doctor_list.html', {'items': items})
+    departments = Department.objects.all()
+    items = Doctor.objects.select_related(
+        'user', 'specialty', 'department', 'cabinet',
+    )
+    raw_dept = request.GET.get('department')
+    department = (
+        Department.objects.filter(pk=raw_dept).first()
+        if raw_dept and raw_dept.isdigit() else None
+    )
+    if department is not None:
+        items = items.filter(department=department)
+    return render(request, 'schedule/doctor_list.html', {
+        'items': items,
+        'departments': departments,
+        'department': department,
+    })
 
 
 @login_required
@@ -232,7 +291,7 @@ def floor_guide(request):
     """
     items = list(
         Cabinet.objects.prefetch_related(
-            'doctors__user', 'doctors__specialty',
+            'doctors__user', 'doctors__specialty', 'doctors__department',
         ).order_by('building', 'floor', 'number')
     )
     floors = sorted({c.floor for c in items})
@@ -240,6 +299,19 @@ def floor_guide(request):
     floor = int(raw_floor) if raw_floor and raw_floor.isdigit() else None
     if floor is not None:
         items = [c for c in items if c.floor == floor]
+
+    departments = Department.objects.all()
+    raw_dept = request.GET.get('department')
+    department = (
+        Department.objects.filter(pk=raw_dept).first()
+        if raw_dept and raw_dept.isdigit() else None
+    )
+    if department is not None:
+        # кабинет остаётся, только если в нём есть врач этого отдела
+        items = [
+            c for c in items
+            if any(d.department_id == department.pk for d in c.doctors.all())
+        ]
 
     groups, index = [], {}
     for cabinet in items:
@@ -257,6 +329,8 @@ def floor_guide(request):
         'groups': groups,
         'floors': floors,
         'floor': floor,
+        'departments': departments,
+        'department': department,
     })
 
 

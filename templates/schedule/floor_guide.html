@@ -11,12 +11,24 @@
 </div>
 
 {% if floors %}
-<nav class="mb-3 d-flex gap-2 flex-wrap" aria-label="Фильтр по этажам">
+<nav class="mb-2 d-flex gap-2 flex-wrap" aria-label="Фильтр по этажам">
   <a class="btn btn-sm {% if floor is None %}btn-primary{% else %}btn-outline-primary{% endif %}"
-     href="{% url 'schedule:floor_guide' %}">Все этажи</a>
+     href="{% url 'schedule:floor_guide' %}{% if department %}?department={{ department.pk }}{% endif %}">Все этажи</a>
   {% for f in floors %}
   <a class="btn btn-sm {% if floor == f %}btn-primary{% else %}btn-outline-primary{% endif %}"
-     href="{% url 'schedule:floor_guide' %}?floor={{ f }}">{{ f }} этаж</a>
+     href="{% url 'schedule:floor_guide' %}?floor={{ f }}{% if department %}&department={{ department.pk }}{% endif %}">{{ f }} этаж</a>
+  {% endfor %}
+</nav>
+{% endif %}
+
+{% if departments %}
+<nav class="mb-3 d-flex gap-2 flex-wrap" aria-label="Фильтр по отделам">
+  <span class="text-muted small align-self-center">Отдел:</span>
+  <a class="btn btn-sm btn-outline-secondary {% if department is None %}active{% endif %}"
+     href="{% url 'schedule:floor_guide' %}{% if floor is not None %}?floor={{ floor }}{% endif %}">Все</a>
+  {% for dep in departments %}
+  <a class="btn btn-sm btn-outline-secondary {% if department and department.pk == dep.pk %}active{% endif %}"
+     href="{% url 'schedule:floor_guide' %}?department={{ dep.pk }}{% if floor is not None %}&floor={{ floor }}{% endif %}">{{ dep.name }}</a>
   {% endfor %}
 </nav>
 {% endif %}
@@ -39,7 +51,7 @@
             {% for d in c.doctors.all %}
             <li class="mb-1">
               {{ d.full_name }}
-              <span class="text-muted small d-block">{{ d.specialty }}</span>
+              <span class="text-muted small d-block">{{ d.specialty }}{% if d.department %} · {{ d.department }}{% endif %}</span>
             </li>
             {% empty %}
             <li class="text-muted small">Нет закреплённых врачей</li>

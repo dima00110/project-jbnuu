@@ -17,6 +17,21 @@ class Specialty(models.Model):
         return self.name
 
 
+class Department(models.Model):
+    """Отдел (подразделение), группирующее врачей."""
+
+    name = models.CharField('Название', max_length=100, unique=True)
+    code = models.CharField('Код', max_length=20, blank=True)
+
+    class Meta:
+        verbose_name = 'Отдел'
+        verbose_name_plural = 'Отделы'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class Cabinet(models.Model):
     """Кабинет (справочник)."""
 
@@ -44,6 +59,11 @@ class Doctor(models.Model):
     specialty = models.ForeignKey(
         Specialty, on_delete=models.PROTECT,
         related_name='doctors', verbose_name='Специальность',
+    )
+    department = models.ForeignKey(
+        Department, on_delete=models.PROTECT,
+        related_name='doctors', verbose_name='Отдел',
+        null=True, blank=True,
     )
     cabinet = models.ForeignKey(
         Cabinet, on_delete=models.PROTECT,

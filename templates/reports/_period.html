@@ -19,10 +19,22 @@
       {% endfor %}
     </select>
   </div>
+  <div>
+    <label class="form-label small mb-1">Отдел</label>
+    <select name="department" class="form-select">
+      <option value="">— все —</option>
+      {% for dep in departments %}
+      <option value="{{ dep.pk }}" {% if department and department.pk == dep.pk %}selected{% endif %}>
+        {{ dep.name }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
   {% endif %}
   <button class="btn btn-outline-primary">Показать</button>
   <span class="text-muted small align-self-center">
     {{ date_from|date:"d.m.Y" }} — {{ date_to|date:"d.m.Y" }}
     {% if doctor %} · {{ doctor.full_name }}{% endif %}
+    {% if department %} · {{ department }}{% endif %}
   </span>
 </form>

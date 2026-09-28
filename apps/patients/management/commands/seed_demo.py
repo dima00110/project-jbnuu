@@ -20,7 +20,7 @@ from apps.accounts.roles import Roles
 from apps.appointments.models import Appointment
 from apps.appointments.slots import generate_slots
 from apps.patients.models import InsurancePolicy, Patient
-from apps.schedule.models import Cabinet, Doctor, Specialty, WorkSchedule
+from apps.schedule.models import Cabinet, Department, Doctor, Specialty, WorkSchedule
 
 DEMO_TAG = '[demo]'
 
@@ -154,6 +154,19 @@ DEMO_CABINETS = [
     ('201', 2, 'Б'), ('202', 2, 'Б'), ('203', 2, 'Б'),
 ]
 
+DEMO_DEPARTMENTS = [
+    ('Терапевтическое отделение', 'ТО'),
+    ('Кардиологическое отделение', 'КО'),
+    ('Детское отделение', 'ДО'),
+]
+
+# какому демо-врачу какой отдел
+DEMO_DOCTOR_DEPARTMENT = {
+    'doctor1': 'Терапевтическое отделение',
+    'doctor2': 'Кардиологическое отделение',
+    'doctor3': 'Детское отделение',
+}
+
 _MON_FRI = (1, 2, 3, 4, 5)
 
 # Врачи и их недельное расписание:
@@ -205,9 +218,14 @@ class Command(BaseCommand):
             cabs, _ = Cabinet.objects.filter(
                 number__in=[c[0] for c in DEMO_CABINETS], doctors__isnull=True,
             ).delete()
+            deps, _ = Department.objects.filter(
+                name__in=[d[0] for d in DEMO_DEPARTMENTS],
+                doctors__isnull=True,
+            ).delete()
             self.stdout.write(
                 f'Удалено: записей — {appts}, пациентов — {patients}, '
-                f'пользователей — {users}, специальностей — {specs}, кабинетов — {cabs}'
+                f'пользователей — {users}, специальностей — {specs}, '
+                f'кабинетов — {cabs}, отделов — {deps}'
             )
 
         # 3. Пользователи с ролями
@@ -260,16 +278,28 @@ class Command(BaseCommand):
                 number=number,
                 defaults={'floor': floor, 'building': building},
             )
+        for name, code in DEMO_DEPARTMENTS:
+            Department.objects.get_or_create(name=name, defaults={'code': code})
 
         # 6. Врачи (профили поверх пользователей)
         for username, spec_name, cab_number, _slots in DEMO_DOCTORS:
             user = User.objects.get(username=username)
             specialty = Specialty.objects.get(name=spec_name)
             cabinet = Cabinet.objects.get(number=cab_number)
-            Doctor.objects.get_or_create(
-                user=user,
-                defaults={'specialty': specialty, 'cabinet': cabinet, 'is_active': True},
+            department = Department.objects.get(
+                name=DEMO_DOCTOR_DEPARTMENT[username],
             )
+            doctor, _created = Doctor.objects.get_or_create(
+                user=user,
+                defaults={
+                    'specialty': specialty, 'cabinet': cabinet,
+                    'department': department, 'is_active': True,
+                },
+            )
+            # врачи из прежних запусков без отдела — донашиваем
+            if doctor.department_id is None:
+                doctor.department = department
+                doctor.save(update_fields=['department'])
 
         # 7. Расписание приёма
         schedules_created = 0

@@ -7,16 +7,29 @@
   <h3 class="mb-0">Врачи</h3>
   {% if perms.schedule.add_doctor %}<a href="{% url 'schedule:doctor_create' %}" class="btn btn-primary">+ Добавить</a>{% endif %}
 </div>
+
+{% if departments %}
+<nav class="mb-3 d-flex gap-2 flex-wrap" aria-label="Фильтр по отделам">
+  <a class="btn btn-sm {% if department is None %}btn-primary{% else %}btn-outline-primary{% endif %}"
+     href="{% url 'schedule:doctor_list' %}">Все отделы</a>
+  {% for dep in departments %}
+  <a class="btn btn-sm {% if department and department.pk == dep.pk %}btn-primary{% else %}btn-outline-primary{% endif %}"
+     href="{% url 'schedule:doctor_list' %}?department={{ dep.pk }}">{{ dep.name }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+
 <div class="card shadow-sm"><div class="table-responsive">
   <table class="table table-hover mb-0 align-middle">
     <thead class="table-light">
-      <tr><th>ФИО</th><th>Специальность</th><th>Кабинет</th><th>Статус</th><th></th></tr>
+      <tr><th>ФИО</th><th>Специальность</th><th>Отдел</th><th>Кабинет</th><th>Статус</th><th></th></tr>
     </thead>
     <tbody>
       {% for item in items %}
       <tr>
         <td>{{ item.full_name }}</td>
         <td>{{ item.specialty }}</td>
+        <td>{{ item.department|default:"—" }}</td>
         <td>{{ item.cabinet|default:"—" }}</td>
         <td>
           {% if item.is_active %}<span class="badge bg-success">активен</span>
@@ -27,7 +40,7 @@
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="5" class="text-center text-muted py-4">Пока нет врачей</td></tr>
+      <tr><td colspan="6" class="text-center text-muted py-4">Пока нет врачей</td></tr>
       {% endfor %}
     </tbody>
   </table>

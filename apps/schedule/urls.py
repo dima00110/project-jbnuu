@@ -12,6 +12,10 @@ urlpatterns = [
     path('specialties/', views.specialty_list, name='specialty_list'),
     path('specialties/new/', views.specialty_create, name='specialty_create'),
     path('specialties/<int:pk>/edit/', views.specialty_edit, name='specialty_edit'),
+    # отделы
+    path('departments/', views.department_list, name='department_list'),
+    path('departments/new/', views.department_create, name='department_create'),
+    path('departments/<int:pk>/edit/', views.department_edit, name='department_edit'),
     # кабинеты
     path('cabinets/', views.cabinet_list, name='cabinet_list'),
     path('cabinets/new/', views.cabinet_create, name='cabinet_create'),

@@ -114,13 +114,14 @@ echo "== 4. CRUD пациента (admin) =="
 from django.contrib.auth.models import User
 from apps.appointments.models import Appointment
 from apps.patients.models import Patient
-from apps.schedule.models import Cabinet, Doctor, Specialty, WorkSchedule
+from apps.schedule.models import Cabinet, Department, Doctor, Specialty, WorkSchedule
 Appointment.objects.filter(comment__startswith='[test]').delete()
 Patient.objects.filter(notes__startswith='[test]').delete()
 Doctor.objects.filter(user__username='doctor_test').delete()
 User.objects.filter(username='doctor_test').delete()
 Specialty.objects.filter(name='Гастроэнтеролог').delete()
 Cabinet.objects.filter(number='999').delete()
+Department.objects.filter(name='Тестовый отдел [test]').delete()
 # демо-талоны: вернуть «живых» в очередь (смоук мог вызвать пациентов)
 from apps.queue.models import QueueTicket
 QueueTicket.objects.filter(appointment__comment__startswith='[demo]') \
@@ -648,6 +649,66 @@ check_eq "фильтр ?floor=999: пустое состояние, 200" "200" \
   "$(status "$BASE/schedule/cabinets/?floor=999" "$J_ADMIN")"
 check_eq "registrar: CRUD кабинетов → 302 (нет прав)" "302" \
   "$(status "$BASE/schedule/cabinets/" "$J_REG")"
+
+echo "== 14. Отделы =="
+check_eq "аноним: /schedule/departments/ → 302 (login)" "302" \
+  "$(status "$BASE/schedule/departments/" "$J_ANON")"
+check_eq "registrar: отделы → 302 (нет прав)" "302" \
+  "$(status "$BASE/schedule/departments/" "$J_REG")"
+check_eq "admin: список отделов → 200" "200" \
+  "$(status "$BASE/schedule/departments/" "$J_ADMIN")"
+check_eq "manager: список отделов → 200 (чтение)" "200" \
+  "$(status "$BASE/schedule/departments/" "$J_MGR")"
+DEPTS=$(body "$BASE/schedule/departments/" "$J_ADMIN")
+check_contains "отделы: демо-отдел в списке" "$DEPTS" "Терапевтическое отделение"
+check_contains "отделы: колонка «Врачей»" "$DEPTS" "Врачей"
+check_contains "ссылка «Отделы» в хабе справочников" \
+  "$(body "$BASE/schedule/" "$J_ADMIN")" "/schedule/departments/"
+
+# CRUD: создание / редактирование / дубль
+DEPT=$(post "$BASE/schedule/departments/new/" "$J_ADMIN" \
+  --data-urlencode "name=Тестовый отдел [test]" --data-urlencode "code=TST")
+check_eq "создание отдела → 302" "302" "${DEPT%%|*}"
+check_contains "новый отдел в списке" \
+  "$(body "$BASE/schedule/departments/" "$J_ADMIN")" "Тестовый отдел"
+DEPT_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Department; d=Department.objects.filter(name='Тестовый отдел [test]').first(); print(d.pk if d else '')" \
+  2>/dev/null | tail -n1)
+EDIT=$(post "$BASE/schedule/departments/$DEPT_PK/edit/" "$J_ADMIN" \
+  --data-urlencode "name=Тестовый отдел [test]" --data-urlencode "code=TST2")
+check_eq "редактирование отдела → 302" "302" "${EDIT%%|*}"
+check_contains "код отдела обновлён" \
+  "$(body "$BASE/schedule/departments/" "$J_ADMIN")" "TST2"
+DUP=$(post "$BASE/schedule/departments/new/" "$J_ADMIN" \
+  --data-urlencode "name=Тестовый отдел [test]" --data-urlencode "code=X")
+check_eq "дубль названия отдела → 200 с ошибкой" "200" "${DUP%%|*}"
+check_eq "manager: создание отдела → 302 (нет прав)" "302" \
+  "$(status "$BASE/schedule/departments/new/" "$J_MGR")"
+
+# фильтры: отдел как разрез
+THERA_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Department; print(Department.objects.get(name='Терапевтическое отделение').pk)" \
+  2>/dev/null | tail -n1)
+DOCS_DEPT=$(body "$BASE/schedule/doctors/?department=$THERA_PK" "$J_ADMIN")
+check_contains "врачи ?department=: Орлов виден" "$DOCS_DEPT" "Орлов"
+check_eq "врачи ?department=: Каримов скрыт" "0" "$(echo "$DOCS_DEPT" | grep -c 'Каримов')"
+check_contains "список врачей: колонка «Отдел»" \
+  "$(body "$BASE/schedule/doctors/" "$J_ADMIN")" "Отдел"
+
+GUIDE2=$(body "$BASE/schedule/floors/" "$J_ADMIN")
+check_contains "этажи: отдел подписан у врача" "$GUIDE2" "Терапевтическое отделение"
+check_contains "этажи: фильтр по отделам" "$GUIDE2" "?department="
+GUIDE_DEPT=$(body "$BASE/schedule/floors/?department=$THERA_PK" "$J_ADMIN")
+check_eq "этажи ?department=: Каримов скрыт" "0" "$(echo "$GUIDE_DEPT" | grep -c 'Каримов')"
+
+RLOAD=$(body "$BASE/reports/load/?from=${P_FROM}&to=${P_TO}&department=$THERA_PK" "$J_ADMIN")
+check_contains "отчёт ?department=: строка врача отдела" "$RLOAD" "text-muted small\">(Терапевт)"
+check_eq "отчёт ?department=: чужой отдел без строки" "0" \
+  "$(echo "$RLOAD" | grep -c 'text-muted small\">(Кардиолог)')"
+check_contains "отчёт загрузки: колонка «Отдел»" \
+  "$(body "$BASE/reports/load/?from=${P_FROM}&to=${P_TO}" "$J_ADMIN")" "<th>Отдел</th>"
+check_eq "doctor: селектор отдела скрыт" "0" \
+  "$(body "$BASE/reports/" "$J_DOC1" | grep -c 'name="department"')"
 
 echo
 echo "=================================="

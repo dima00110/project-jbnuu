@@ -17,6 +17,8 @@ APPOINTMENT_PERMS = {
 }
 SCHEDULE_PERMS = {
     'add_specialty', 'change_specialty', 'view_specialty', 'delete_specialty',
+    'add_department', 'change_department',
+    'view_department', 'delete_department',
     'add_cabinet', 'change_cabinet', 'view_cabinet', 'delete_cabinet',
     'add_doctor', 'change_doctor', 'view_doctor',
     'add_workschedule', 'change_workschedule', 'view_workschedule',
@@ -49,6 +51,7 @@ class Command(BaseCommand):
             Roles.MANAGEMENT: {
                 'view_patient', 'view_insurancepolicy',
                 'view_appointment', 'view_specialty',
+                'view_department',
                 'view_cabinet', 'view_doctor', 'view_workschedule',
                 'view_queueticket',
             },

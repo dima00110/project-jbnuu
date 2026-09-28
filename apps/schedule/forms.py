@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 
-from .models import Cabinet, Doctor, Specialty, WorkSchedule
+from .models import Cabinet, Department, Doctor, Specialty, WorkSchedule
 
 
 def _apply_bootstrap(form):
@@ -34,6 +34,16 @@ class CabinetForm(forms.ModelForm):
         _apply_bootstrap(self)
 
 
+class DepartmentForm(forms.ModelForm):
+    class Meta:
+        model = Department
+        fields = ['name', 'code']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _apply_bootstrap(self)
+
+
 class DoctorForm(forms.ModelForm):
     """Создание врача: либо выбор существующего пользователя, либо новый логин."""
 
@@ -53,7 +63,7 @@ class DoctorForm(forms.ModelForm):
 
     class Meta:
         model = Doctor
-        fields = ['specialty', 'cabinet', 'is_active']
+        fields = ['specialty', 'department', 'cabinet', 'is_active']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
