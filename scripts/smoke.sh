@@ -744,8 +744,13 @@ check_contains "ссылка «Структура» в хабе" \
 SPEC_PAGE=$(body "$BASE/schedule/specialties/" "$J_ADMIN")
 check_contains "специальности: врач закреплён" "$SPEC_PAGE" "Орлов"
 check_contains "специальности: колонка «Отделы»" "$SPEC_PAGE" "Отделы"
+check_contains "специальности: расширенный набор (Хирург)" "$SPEC_PAGE" "Хирург"
 check_contains "отделы: колонка «Специальности»" \
   "$(body "$BASE/schedule/departments/" "$J_ADMIN")" "Специальности"
+DEPTS_ALL=$(body "$BASE/schedule/departments/" "$J_ADMIN")
+check_contains "отделы: новое отделение есть" "$DEPTS_ALL" "Хирургическое отделение"
+check_contains "структура: новое отделение с хирургом" \
+  "$(body "$BASE/schedule/structure/" "$J_ADMIN")" "Хирургическое отделение"
 
 # комбинированный фильтр списка врачей
 THERA_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
