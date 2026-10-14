@@ -164,26 +164,56 @@ def cabinet_edit(request, pk):
 # --- Врачи ----------------------------------------------------------------
 
 
-@login_required
-@role_required(Roles.ADMINISTRATOR, Roles.MANAGEMENT)
-def doctor_list(request):
-    departments = Department.objects.all()
-    specialties = Specialty.objects.all()
-    items = Doctor.objects.select_related(
-        'user', 'specialty', 'department', 'cabinet',
-    )
+def _doctor_filter(request):
+    """
+    Фильтры списков врачей «отдел → специальность».
+
+    При выбранном отделе список специальностей ограничивается его M2M
+    (как того требует Doctor.clean). Несовместимая пара из URL —
+    redirect на тот же адрес без параметра specialty, чтобы URL и
+    состояние селектов всегда совпадали.
+
+    Возвращает (department, specialty, specialties, error_response):
+    если передан error_response — его и надо вернуть из вью.
+    """
     raw_dept = request.GET.get('department')
     department = (
         Department.objects.filter(pk=raw_dept).first()
         if raw_dept and raw_dept.isdigit() else None
     )
-    if department is not None:
-        items = items.filter(department=department)
     raw_spec = request.GET.get('specialty')
     specialty = (
         Specialty.objects.filter(pk=raw_spec).first()
         if raw_spec and raw_spec.isdigit() else None
     )
+    specialties = (
+        department.specialties.all()
+        if department is not None else Specialty.objects.all()
+    )
+    if (
+        department is not None and specialty is not None
+        and not specialties.filter(pk=specialty.pk).exists()
+    ):
+        params = request.GET.copy()
+        if 'specialty' in params:
+            params.pop('specialty')
+        url = request.path + ('?' + params.urlencode() if params else '')
+        return None, None, specialties, redirect(url)
+    return department, specialty, specialties, None
+
+
+@login_required
+@role_required(Roles.ADMINISTRATOR, Roles.MANAGEMENT)
+def doctor_list(request):
+    departments = Department.objects.all()
+    department, specialty, specialties, error = _doctor_filter(request)
+    if error is not None:
+        return error
+    items = Doctor.objects.select_related(
+        'user', 'specialty', 'department', 'cabinet',
+    )
+    if department is not None:
+        items = items.filter(department=department)
     if specialty is not None:
         items = items.filter(specialty=specialty)
     return render(request, 'schedule/doctor_list.html', {
@@ -398,18 +428,11 @@ def doctor_directory(request):
         'user', 'specialty', 'department', 'cabinet',
     ).order_by('specialty__name', 'user__last_name', 'user__first_name')
 
-    raw_dept = request.GET.get('department')
-    department = (
-        Department.objects.filter(pk=raw_dept).first()
-        if raw_dept and raw_dept.isdigit() else None
-    )
+    department, specialty, specialties, error = _doctor_filter(request)
+    if error is not None:
+        return error
     if department is not None:
         doctors = doctors.filter(department=department)
-    raw_spec = request.GET.get('specialty')
-    specialty = (
-        Specialty.objects.filter(pk=raw_spec).first()
-        if raw_spec and raw_spec.isdigit() else None
-    )
     if specialty is not None:
         doctors = doctors.filter(specialty=specialty)
 
@@ -417,7 +440,7 @@ def doctor_directory(request):
         'doctors': doctors,
         'departments': Department.objects.all(),
         'department': department,
-        'specialties': Specialty.objects.all(),
+        'specialties': specialties,
         'specialty': specialty,
     })
 
