@@ -11,6 +11,8 @@ urlpatterns = [
     path('', include('apps.accounts.urls')),
     path('', include('apps.schedule.public_urls')),
     path('patients/', include('apps.patients.urls')),
+    path('', include('apps.patients.public_urls')),
+    path('', include('apps.appointments.public_urls')),
     path('schedule/', include('apps.schedule.urls')),
     path('appointments/', include('apps.appointments.urls')),
     path('queue/', include('apps.queue.urls')),

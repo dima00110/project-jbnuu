@@ -43,8 +43,10 @@
         </div>
         {% if d.from_doctor %}
         <div class="small mt-1">От кого: {{ d.from_doctor.full_name }} ({{ d.from_doctor.specialty }})</div>
+        {% elif d.created_by %}
+        <div class="small text-muted mt-1">Создано: {{ d.created_by.username }}</div>
         {% else %}
-        <div class="small text-muted mt-1">Создано: {{ d.created_by.username|default:"—" }}</div>
+        <div class="small text-muted mt-1">🌐 Заявка с сайта</div>
         {% endif %}
         <div class="small mt-1"><b>Причина:</b> {{ d.reason }}</div>
         {% if d.status == 'booked' and d.appointment %}

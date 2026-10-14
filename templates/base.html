@@ -25,10 +25,10 @@
 <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
   <div class="container-fluid">
     <a class="navbar-brand" href="{% url 'dashboard' %}">🏥 Регистратура</a>
-    {% if user.is_authenticated %}
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav">
       <span class="navbar-toggler-icon"></span>
     </button>
+    {% if user.is_authenticated %}
     <div class="collapse navbar-collapse" id="nav">
       <ul class="navbar-nav me-auto">
         <li class="nav-item"><a class="nav-link" href="{% url 'dashboard' %}">Главная</a></li>
@@ -62,6 +62,15 @@
         {% csrf_token %}
         <button class="btn btn-outline-light btn-sm">Выйти</button>
       </form>
+    </div>
+    {% else %}
+    <div class="collapse navbar-collapse" id="nav">
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item"><a class="nav-link" href="{% url 'public_request' %}">Запись</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'doctor_directory' %}">Каталог врачей</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'queue:monitor' %}">Монитор очереди</a></li>
+      </ul>
+      <a href="{% url 'login' %}" class="btn btn-outline-light btn-sm">Вход</a>
     </div>
     {% endif %}
   </div>

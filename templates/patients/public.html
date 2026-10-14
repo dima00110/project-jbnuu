@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Мои записи — Регистратура{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    {% if new_direction %}
+    <div class="card border-success shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="display-6">✅</span>
+          <div>
+            <div class="fw-bold fs-5">Заявка {{ new_direction.number }} принята</div>
+            <div class="text-muted small">
+              {% if card_created %}
+              Карточка пациента создана.
+              {% else %}
+              Найдена существующая карточка пациента.
+              {% endif %}
+              Цель: <span class="badge bg-primary">{{ new_direction.specialty }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="small mb-2">
+          <b>Причина:</b> {{ new_direction.reason }}
+        </div>
+
+        <div class="border rounded bg-light p-2 d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+          <div class="text-start">
+            <div class="small fw-semibold">Код для блока «Мои записи» на главной</div>
+            <code class="user-select-all">{{ patient.public_id }}</code>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary js-copy-code"
+                  data-code="{{ patient.public_id }}">
+            Скопировать код заявки
+          </button>
+        </div>
+
+        <div class="small text-muted mb-1">Система подобрала свободных врачей</div>
+        {% if candidates %}
+        <div class="row g-2">
+          {% for c in candidates %}
+          <div class="col-12">
+            <div class="border rounded p-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div>
+                <a href="{% url 'doctor_card' c.doctor.pk %}" class="fw-semibold text-decoration-none">
+                  {{ c.doctor.full_name }}
+                </a>
+                <span class="text-muted small">
+                  · {{ c.doctor.department|default:"без отдела" }}
+                  {% if c.doctor.cabinet %} · каб. {{ c.doctor.cabinet.number }} ({{ c.doctor.cabinet.floor }} эт.){% endif %}
+                </span>
+                <div class="small">
+                  <span class="badge bg-success">ближайший слот: {{ c.first_date|date:"d.m" }} {{ c.first_time|time:"H:i" }}</span>
+                  <span class="badge bg-secondary">загрузка сегодня: {{ c.load_pct }}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info py-2 mb-0">
+          Подходящих врачей не найдено: нет активных врачей нужной специальности
+          со свободными слотами на ближайшие 7 дней.
+        </div>
+        {% endif %}
+
+        <div class="text-muted small mt-2">
+          Регистратор перезвонит по телефону, чтобы подтвердить запись.
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div>
+            <h3 class="mb-1">{{ patient.full_name }}</h3>
+            <p class="text-muted mb-0">
+              {{ patient.birth_date|date:"d.m.Y" }} · {{ patient.age }} лет
+            </p>
+          </div>
+          <div class="text-end">
+            <div class="small text-muted">Код «Мои записи»</div>
+            <code class="user-select-all">{{ patient.public_id }}</code>
+            <div class="mt-1">
+              <button type="button" class="btn btn-sm btn-outline-secondary js-copy-code"
+                      data-code="{{ patient.public_id }}">
+                Скопировать код заявки
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if today_ticket %}
+    <div class="card border-primary shadow-sm mb-3">
+      <div class="card-body text-center">
+        <div class="text-muted small">Ваш номер в очереди на {{ today|date:"d.m.Y" }}</div>
+        <div class="display-4 fw-bold text-primary">№{{ today_ticket.number }}</div>
+        <div>
+          {{ today_ticket.doctor.full_name }} ·
+          {{ today_ticket.doctor.specialty }}
+        </div>
+        <span class="badge bg-{% if today_ticket.status == 'waiting' %}secondary{% elif today_ticket.status == 'called' %}warning{% else %}success{% endif %} mt-2">
+          {{ today_ticket.get_status_display }}
+        </span>
+        <div class="mt-2">
+          <a href="{% url 'queue:monitor' %}" class="btn btn-sm btn-outline-primary">
+            📺 Монитор очереди
+          </a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-header">Ближайшие записи</div>
+      <div class="card-body">
+        {% if upcoming %}
+        <table class="table table-sm mb-0 align-middle">
+          <thead><tr><th>Дата</th><th>Время</th><th>Врач</th><th>Кабинет</th></tr></thead>
+          <tbody>
+            {% for a in upcoming %}
+            <tr>
+              <td class="fw-semibold">{{ a.visit_date|date:"d.m.Y" }}</td>
+              <td>{{ a.slot_start|time:"H:i" }}</td>
+              <td>
+                {{ a.doctor.full_name }}<br>
+                <span class="text-muted small">{{ a.doctor.specialty }}</span>
+              </td>
+              <td>{{ a.doctor.cabinet.number|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted mb-0">Ближайших записей нет.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-header">История визитов</div>
+      <div class="card-body">
+        {% if past %}
+        <table class="table table-sm mb-0 align-middle">
+          <thead><tr><th>Дата</th><th>Время</th><th>Врач</th><th>Статус</th></tr></thead>
+          <tbody>
+            {% for a in past %}
+            <tr>
+              <td>{{ a.visit_date|date:"d.m.Y" }}</td>
+              <td>{{ a.slot_start|time:"H:i" }}</td>
+              <td>{{ a.doctor.full_name }}</td>
+              <td><span class="badge bg-secondary">{{ a.get_status_display }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted mb-0">Визитов пока не было.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <p class="text-muted small text-center">
+      Записаться или перенести приём — в регистратуру.
+      <a href="{% url 'doctor_directory' %}">Каталог врачей</a> ·
+      <a href="{% url 'dashboard' %}">Главная</a>
+    </p>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Копирование кода пациента: clipboard API, а на http/старых браузерах —
+  // через временный textarea + execCommand
+  (function () {
+    function fallbackCopy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    document.querySelectorAll('.js-copy-code').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var text = btn.getAttribute('data-code') || '';
+        var done = function () {
+          var label = btn.textContent;
+          btn.textContent = 'Скопировано ✓';
+          btn.disabled = true;
+          setTimeout(function () {
+            btn.textContent = label;
+            btn.disabled = false;
+          }, 2000);
+        };
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (fallbackCopy(text)) { done(); }
+          });
+        } else if (fallbackCopy(text)) {
+          done();
+        }
+      });
+    });
+  })();
+</script>
+{% endblock %}

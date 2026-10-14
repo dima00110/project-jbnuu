@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Заявка на приём — Регистратура{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    {% if sent %}
+    <div class="card shadow-sm">
+      <div class="card-body text-center p-5">
+        <div class="display-6 mb-3">✅</div>
+        <h4>Заявка принята</h4>
+        <p class="text-muted mb-0">
+          Регистратор перезвонит, чтобы подтвердить запись.
+        </p>
+      </div>
+    </div>
+    {% else %}
+    <div class="card shadow-sm">
+      <div class="card-header">
+        <h4 class="mb-0">Заявка на приём</h4>
+        <div class="text-muted small">
+          Заполните данные — система подберёт подходящего свободного врача,
+          а регистратор перезвонит для подтверждения.
+        </div>
+      </div>
+      <div class="card-body">
+        {% if form.non_field_errors %}
+        <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+          {# honeypot: скрытое поле против ботов #}
+          <div style="position:absolute; left:-9999px;" aria-hidden="true">
+            <label for="id_website">Не заполняйте это поле</label>
+            {{ form.website }}
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label" for="id_last_name">Фамилия *</label>
+              {{ form.last_name }}
+              {% for e in form.last_name.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="id_first_name">Имя *</label>
+              {{ form.first_name }}
+              {% for e in form.first_name.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="id_patronymic">Отчество</label>
+              {{ form.patronymic }}
+              {% for e in form.patronymic.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label" for="id_birth_date">Дата рождения *</label>
+              {{ form.birth_date }}
+              {% for e in form.birth_date.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="id_gender">Пол *</label>
+              {{ form.gender }}
+              {% for e in form.gender.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="id_phone">Телефон *</label>
+              {{ form.phone }}
+              {% if form.phone.help_text %}<div class="form-text">{{ form.phone.help_text }}</div>{% endif %}
+              {% for e in form.phone.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label" for="id_snils">СНИЛС</label>
+              {{ form.snils }}
+              {% if form.snils.help_text %}<div class="form-text">{{ form.snils.help_text }}</div>{% endif %}
+              {% for e in form.snils.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="id_email">Email</label>
+              {{ form.email }}
+              {% for e in form.email.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label" for="id_specialty">К какому специалисту хотите записаться *</label>
+              {{ form.specialty }}
+              {% for e in form.specialty.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="id_reason">Жалоба / причина обращения *</label>
+              {{ form.reason }}
+              {% for e in form.reason.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary">Отправить заявку</button>
+            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">← На главную</a>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -118,8 +118,13 @@ J_ANON="$COOKIES/anon.txt"
 : > "$J_ANON"
 
 echo "== 1. Аноним =="
-check_eq "GET / → редирект на login" "302" "$(status "$BASE/" "$J_ANON")"
-check_contains "цель редиректа — login" "$(redirect "$BASE/" "$J_ANON")" "/accounts/login/"
+check_eq "GET / → публичная главная (200)" "200" "$(status "$BASE/" "$J_ANON")"
+check_contains "главная: ссылка на вход для сотрудников" \
+  "$(body "$BASE/" "$J_ANON")" "/accounts/login/"
+check_contains "главная: каталог врачей" \
+  "$(body "$BASE/" "$J_ANON")" "/doctors/"
+check_contains "главная: монитор очереди" \
+  "$(body "$BASE/" "$J_ANON")" "/queue/monitor/"
 check_eq "GET /patients/ → редирект" "302" "$(status "$BASE/patients/" "$J_ANON")"
 check_eq "GET /accounts/login/ → 200" "200" "$(status "$BASE/accounts/login/" "$J_ANON")"
 
@@ -153,7 +158,7 @@ for _d in Doctor.objects.filter(user__username__in=('doctor_test', 'doctor_test2
     _d.photo.delete(save=False)
 Doctor.objects.filter(user__username__in=('doctor_test', 'doctor_test2')).delete()
 User.objects.filter(username__in=('doctor_test', 'doctor_test2')).delete()
-Specialty.objects.filter(name='Гастроэнтеролог').delete()
+Specialty.objects.filter(name__endswith='[test]', doctors__isnull=True).delete()
 Cabinet.objects.filter(number='999').delete()
 Department.objects.filter(name='Тестовый отдел [test]').delete()
 # демо-талоны: вернуть «живых» в очередь (смоук мог вызвать пациентов)
@@ -262,6 +267,28 @@ check_eq "detail после деактивации → 404" "404" "$(status "$BA
 check_eq "пациент исчез из списка" "0" \
   "$(body "$BASE/patients/?q=Тестов" "$J_ADMIN" | grep -c "patients/${PID_NEW}/")"
 
+echo "== 6б. Публичная страница пациента (без входа) =="
+PUB_UUID=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.patients.models import Patient; print(Patient.objects.filter(last_name='Соколова').first().public_id)" \
+  2>/dev/null | tail -n1)
+check_eq "формат public_id — UUID" "1" \
+  "$(echo "$PUB_UUID" | grep -cE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')"
+check_eq "аноним: /p/<uuid>/ → 200" "200" \
+  "$(status "$BASE/p/${PUB_UUID}/" "$J_ANON")"
+check_contains "страница: ФИО пациента" \
+  "$(body "$BASE/p/${PUB_UUID}/" "$J_ANON")" "Соколова"
+check_eq "неизвестный UUID → 404" "404" \
+  "$(status "$BASE/p/00000000-0000-4000-8000-000000000000/" "$J_ANON")"
+check_eq "некорректный UUID → 404" "404" \
+  "$(status "$BASE/p/not-a-uuid/" "$J_ANON")"
+DEACT_UUID=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.patients.models import Patient; p=Patient.objects.filter(last_name='Тестов').order_by('-pk').first(); print(p.public_id if p else '')" \
+  2>/dev/null | tail -n1)
+check_eq "деактивированный пациент → 404" "404" \
+  "$(status "$BASE/p/${DEACT_UUID}/" "$J_ANON")"
+check_contains "карточка: ссылка для пациента видна персоналу" \
+  "$(body "$BASE/patients/1/" "$J_ADMIN")" "/p/"
+
 echo "== 7. Роли =="
 login registrar1 registrar12345 "$J_REG"
 check_eq "registrar1: список → 200" "200" "$(status "$BASE/patients/" "$J_REG")"
@@ -285,11 +312,13 @@ check_eq "аноним: POST создание → 302 (нет сессии)" "30
 
 echo "== 8. Справочники (admin) =="
 : > "$J_ADMIN"; login admin admin12345 "$J_ADMIN"
+# CRUD специальности проверяем на тестовой записи: Гастроэнтеролог
+# теперь в seeds (за ним закреплены демо-врачи), удалять его нельзя
 SPEC=$(post "$BASE/schedule/specialties/new/" "$J_ADMIN" \
-  --data-urlencode "name=Гастроэнтеролог" --data-urlencode "code=GAST")
+  --data-urlencode "name=Ревматолог [test]" --data-urlencode "code=RHE")
 check_eq "создание специальности → 302" "302" "${SPEC%%|*}"
 check_contains "специальность в списке" \
-  "$(body "$BASE/schedule/specialties/" "$J_ADMIN")" "Гастроэнтеролог"
+  "$(body "$BASE/schedule/specialties/" "$J_ADMIN")" "Ревматолог"
 
 CAB=$(post "$BASE/schedule/cabinets/new/" "$J_ADMIN" \
   --data-urlencode "number=999" --data-urlencode "floor=3" --data-urlencode "building=В")
@@ -336,7 +365,7 @@ BAD_WS=$(post "$BASE/schedule/work-schedules/new/" "$J_ADMIN" \
 check_eq "конец раньше начала → 200 с ошибкой" "200" "${BAD_WS%%|*}"
 
 DUP_SPEC=$(post "$BASE/schedule/specialties/new/" "$J_ADMIN" \
-  --data-urlencode "name=Гастроэнтеролог" --data-urlencode "code=X2")
+  --data-urlencode "name=Ревматолог [test]" --data-urlencode "code=X2")
 check_eq "дубль названия специальности → 200 с ошибкой" "200" "${DUP_SPEC%%|*}"
 
 echo "== 9. Запись на приём (admin) =="
@@ -402,6 +431,16 @@ check_eq "страница записи (карточка) → 200" "200" \
 check_contains "талон → 200 и содержит номер" "ok" \
   "$(BODY=$(body "$BASE/appointments/${APT_ID}/ticket/" "$J_ADMIN"); \
      case "$BODY" in *"№${APT_ID}"*) echo ok;; *) echo bad;; esac)"
+check_contains "талон: персональная ссылка пациента" \
+  "$(body "$BASE/appointments/${APT_ID}/ticket/" "$J_ADMIN")" "/p/"
+# пациент видит свою запись по ссылке (аноним, без входа);
+# дата на странице отображается как дд.мм.гггг — приводим BOOK_DATE к тому же виду
+PAT_UUID=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.patients.models import Patient; print(Patient.objects.get(pk=${PAT_ID}).public_id)" \
+  2>/dev/null | tail -n1)
+BOOK_DATE_HR="${BOOK_DATE:8:2}.${BOOK_DATE:5:2}.${BOOK_DATE:0:4}"
+check_contains "аноним: страница пациента содержит созданную запись" \
+  "$(body "$BASE/p/${PAT_UUID}/" "$J_ANON")" "${BOOK_DATE_HR}"
 
 # двойная запись в тот же слот → отказ
 DUP_BOOK=$(post "$BASE/appointments/booking/" "$J_ADMIN" \
@@ -856,8 +895,8 @@ check_contains "карточка: специальность" "$DOC1_CARD" "Те
 check_contains "карточка: отдел" "$DOC1_CARD" "Терапевтическое отделение"
 check_contains "карточка: кабинет и этаж" "$DOC1_CARD" "101"
 check_contains "карточка: расписание (Понедельник)" "$DOC1_CARD" "Понедельник"
-check_contains "карточка: кнопка «Записаться» с предвыбором" \
-  "$DOC1_CARD" "booking/?doctor="
+check_contains "карточка: кнопка «Записаться» ведёт в публичную форму" \
+  "$DOC1_CARD" "/request/?specialty="
 check_eq "аноним: несуществующий врач → 404" "404" \
   "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/doctors/99999/")"
 check_eq "аноним: CRUD врачей закрыт → 302" "302" \
@@ -930,9 +969,10 @@ check_eq "врач: направление уходит в регистрату�
 check_contains "кабинет: кнопка «Направить» на приёме" \
   "$(body "$BASE/queue/cabinet/?date=${BOOK_DATE}" "$J_DOC1")" "directions/new/?appointment="
 
-# направление администратора с карточки пациента (специальность без врачей)
-HIR_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
-  "from apps.schedule.models import Specialty; print(Specialty.objects.get(name='Хирург').id)" \
+# направление администратора с карточки пациента (специальность без врачей):
+# в seeds все специальности закреплены за врачами — берём тестовую
+EMPTY_SPEC_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Specialty; print(Specialty.objects.get_or_create(name='Нейрохирург [test]', defaults={'code': 'NEY'})[0].pk)" \
   2>/dev/null | tail -n1)
 B_PAT=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
   "from apps.patients.models import Patient; print(Patient.objects.filter(notes__startswith='[demo]', is_active=True).first().id)" \
@@ -940,8 +980,8 @@ B_PAT=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
 check_eq "админ: направление с карточки пациента → 302" "302" \
   "$(post "$BASE/appointments/directions/new/?patient=${B_PAT}" "$J_ADMIN" \
     --data-urlencode "patient=${B_PAT}" \
-    --data-urlencode "specialty=${HIR_PK}" \
-    --data-urlencode "reason=[test] направление к хирургу" | cut -d'|' -f1)"
+    --data-urlencode "specialty=${EMPTY_SPEC_PK}" \
+    --data-urlencode "reason=[test] направление без врачей" | cut -d'|' -f1)"
 
 # видимость: регистратор — все, врач — только свои, руководство — read-only
 DIR_LIST=$(body "$BASE/appointments/directions/" "$J_REG")
@@ -950,15 +990,22 @@ check_contains "регистратор видит направление вра�
 check_contains "регистратор видит кандидатов (ближайший слот)" \
   "$DIR_LIST" "ближайший слот"
 check_contains "кандидат: второй тест-врач подобран" "$DIR_LIST" "Второв"
-# ссылки «Записать»: 2 демо-направления (по одному кандидату) + 2 у направления
-# врача (оба тест-врача); направление без врачей (хирург) кнопок не даёт
-check_eq "кнопки «Записать» ведут в запись с direction=" "4" \
+# ссылки «Записать»: одна на каждого подобранного кандидата каждой новой
+# направления (самих врачей может становиться больше — ожидание считаем
+# тем же кодом, что и страница)
+EXP_LINKS=$(cd "$BASE_DIR" && "$PY" manage.py shell -c "
+from apps.appointments.models import Direction
+from apps.appointments.routing import find_candidates
+print(sum(len(find_candidates(d.specialty))
+          for d in Direction.objects.filter(status='new')))
+" 2>/dev/null | tail -n1)
+check_eq "кнопки «Записать» ведут в запись с direction=" "$EXP_LINKS" \
   "$(echo "$DIR_LIST" | grep -c 'direction=')"
 DIR_D1=$(body "$BASE/appointments/directions/" "$J_DOC1")
 check_contains "врач: своё направление в списке" \
   "$DIR_D1" "[test] направление на гастроэнтеролога"
 check_eq "врач: чужое направление скрыто" "0" \
-  "$(echo "$DIR_D1" | grep -c '\[test\] направление к хирургу')"
+  "$(echo "$DIR_D1" | grep -c '\[test\] направление без врачей')"
 check_eq "руководство: список → 200" "200" \
   "$(status "$BASE/appointments/directions/" "$J_MGR")"
 check_eq "руководство: кнопок записи нет (read-only)" "0" \
@@ -1017,7 +1064,7 @@ check_eq "направление связано с записью" "1" \
 # без врачей нужной специальности + отмена + отказы по ролям
 check_contains "специальность без врачей: подсказка" "$DIR_LIST" "Подходящих врачей не найдено"
 B_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
-  "from apps.appointments.models import Direction; d=Direction.objects.filter(reason__startswith='[test] направление к хирургу').first(); print(d.pk if d else '')" \
+  "from apps.appointments.models import Direction; d=Direction.objects.filter(reason__startswith='[test] направление без врачей').first(); print(d.pk if d else '')" \
   2>/dev/null | tail -n1)
 check_eq "регистратор: отмена направления → 302" "302" \
   "$(post "$BASE/appointments/directions/${B_PK}/cancel/" "$J_REG" | cut -d'|' -f1)"
@@ -1030,7 +1077,7 @@ check_eq "регистратор: создание направления заб
   "$BASE/" \
   "$(post "$BASE/appointments/directions/new/" "$J_REG" \
     --data-urlencode "patient=${B_PAT}" \
-    --data-urlencode "specialty=${HIR_PK}" \
+    --data-urlencode "specialty=${EMPTY_SPEC_PK}" \
     --data-urlencode "reason=[test] не должна создаться" | cut -d'|' -f2)"
 # врач не направляет по чужому приёму
 OTHER_APPT=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
@@ -1042,6 +1089,173 @@ check_contains "врач: чужой приём → отказ (в кабине�
     --data-urlencode "specialty=${SPEC_ID}" \
     --data-urlencode "reason=[test] чужой приём" | cut -d'|' -f2)" \
   "/queue/cabinet/"
+
+echo "== 18. Публичная заявка пациента (без входа) =="
+# идемпотентность: подчищаем артефакты прошлых прогонов,
+# иначе дедуп найдёт старую карточку и проверки created=1 сломаются
+(cd "$BASE_DIR" && "$PY" manage.py shell -c "
+from apps.appointments.models import Direction
+from apps.patients.models import Patient
+Direction.objects.filter(
+    reason__startswith='[test] заявка с сайта',
+).delete()
+Direction.objects.filter(
+    reason__startswith='[test] дедуп ФИО+ДР',
+).delete()
+Patient.objects.filter(last_name='Сайтов', first_name='Пациент').delete()
+" > /dev/null 2>&1)
+
+check_eq "аноним: /request/ → 200" "200" "$(status "$BASE/request/" "$J_ANON")"
+REQ_PAGE=$(body "$BASE/request/" "$J_ANON")
+check_contains "форма: поле ФИО" "$REQ_PAGE" "id_last_name"
+check_contains "форма: поле СНИЛС" "$REQ_PAGE" "id_snils"
+check_contains "форма: специальность" "$REQ_PAGE" "id_specialty"
+check_contains "форма: honeypot скрыт" "$REQ_PAGE" "id_website"
+check_contains "навбар: ссылка «Запись»" "$REQ_PAGE" "/request/"
+check_contains "лендинг: кнопка «Записаться онлайн»" \
+  "$(body "$BASE/" "$J_ANON")" "/request/"
+
+# невалидная заявка: ничего не создаёт
+PT_BEFORE=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from django.contrib.auth.models import User; from apps.patients.models import Patient; print(Patient.objects.count())" \
+  2>/dev/null | tail -n1)
+DIR_BEFORE=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.appointments.models import Direction; print(Direction.objects.count())" \
+  2>/dev/null | tail -n1)
+BAD=$(post "$BASE/request/" "$J_ANON" \
+  --data-urlencode "last_name=Плохой" --data-urlencode "first_name=Клиент" \
+  --data-urlencode "birth_date=2031-01-01" --data-urlencode "gender=" \
+  --data-urlencode "snils=123" --data-urlencode "phone=12" \
+  --data-urlencode "specialty=${SPEC_ID}" --data-urlencode "reason=spam" \
+  --data-urlencode "website=")
+check_eq "невалидная заявка → 200 (ошибки на месте)" "200" "${BAD%%|*}"
+check_eq "невалидная: пациентов не прибавилось" "$PT_BEFORE" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.patients.models import Patient; print(Patient.objects.count())" \
+    2>/dev/null | tail -n1)"
+check_eq "невалидная: направлений не прибавилось" "$DIR_BEFORE" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.appointments.models import Direction; print(Direction.objects.count())" \
+    2>/dev/null | tail -n1)"
+
+# honeypot: бот заполнил скрытое поле
+BAD_HP=$(post "$BASE/request/" "$J_ANON" \
+  --data-urlencode "last_name=Бот" --data-urlencode "first_name=Спам" \
+  --data-urlencode "birth_date=1990-01-01" --data-urlencode "gender=M" \
+  --data-urlencode "snils=" --data-urlencode "phone=+998 90 000-00-00" \
+  --data-urlencode "specialty=${SPEC_ID}" --data-urlencode "reason=bot" \
+  --data-urlencode "website=http://spam.example")
+check_eq "honeypot: пациентов не прибавилось" "$PT_BEFORE" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.patients.models import Patient; print(Patient.objects.count())" \
+    2>/dev/null | tail -n1)"
+check_eq "honeypot: направлений не прибавилось" "$DIR_BEFORE" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.appointments.models import Direction; print(Direction.objects.count())" \
+    2>/dev/null | tail -n1)"
+
+# валидная заявка
+OK=$(post "$BASE/request/" "$J_ANON" \
+  --data-urlencode "last_name=Сайтов" --data-urlencode "first_name=Пациент" \
+  --data-urlencode "patronymic=Петрович" \
+  --data-urlencode "birth_date=1988-11-11" --data-urlencode "gender=M" \
+  --data-urlencode "snils=" --data-urlencode "phone=+998 90 777-88-99" \
+  --data-urlencode "email=" \
+  --data-urlencode "specialty=${SPEC_ID}" \
+  --data-urlencode "reason=[test] заявка с сайта")
+check_eq "валидная заявка → 302" "302" "${OK%%|*}"
+REQ_LOC="${OK#*|}"
+check_contains "редирект ведёт на /p/<uuid>/?new=" "$REQ_LOC" "/p/"
+check_contains "редирект содержит new=" "$REQ_LOC" "new="
+REQ_UUID=$(echo "$REQ_LOC" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -n1)
+check_eq "формат UUID в редиректе" "1" \
+  "$(echo "$REQ_UUID" | grep -cE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')"
+REQ_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.appointments.models import Direction; d=Direction.objects.filter(reason='[test] заявка с сайта').order_by('-pk').first(); print(d.pk if d else '')" \
+  2>/dev/null | tail -n1)
+check_eq "направление создано" "ok" "$([ -n "$REQ_PK" ] && echo ok || echo no)"
+check_eq "направление: created_by IS NULL (маркер «с сайта»)" "1" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.appointments.models import Direction; d=Direction.objects.get(pk=${REQ_PK}); print(1 if d.created_by_id is None and d.status=='new' else 0)" \
+    2>/dev/null | tail -n1)"
+
+# страница пациента: баннер + подобранные врачи
+# (нужен полный URL — баннер включается параметром ?new=)
+REQ_PAGE2=$(body "$REQ_LOC" "$J_ANON")
+check_contains "баннер: номер заявки" "$REQ_PAGE2" "Н-"
+check_contains "баннер: причина" "$REQ_PAGE2" "[test] заявка с сайта"
+check_contains "баннер: карточка создана" "$REQ_PAGE2" "Карточка пациента создана"
+check_contains "баннер: подбор врачей" "$REQ_PAGE2" "подобрала"
+check_contains "баннер: карточки врачей со слотами" "$REQ_PAGE2" "ближайший слот"
+
+# чужое направление по UUID не показывается
+OTHER_DIR=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.appointments.models import Direction; d=Direction.objects.exclude(pk=${REQ_PK}).order_by('-pk').first(); print(d.pk if d else '')" \
+  2>/dev/null | tail -n1)
+check_eq "чужое направление игнорируется" "0" \
+  "$(body "${REQ_LOC%%\?*}?new=${OTHER_DIR}" "$J_ANON" | grep -c 'принята')"
+
+# дедуп: тот же человек (ФИО+ДР, регистр кириллицы) -> новая карточка НЕ создана
+PT_BEFORE2=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.patients.models import Patient; print(Patient.objects.count())" \
+  2>/dev/null | tail -n1)
+DEDUP=$(post "$BASE/request/" "$J_ANON" \
+  --data-urlencode "last_name=САЙТОВ" --data-urlencode "first_name=пациЕНТ" \
+  --data-urlencode "patronymic=" \
+  --data-urlencode "birth_date=1988-11-11" --data-urlencode "gender=M" \
+  --data-urlencode "snils=" --data-urlencode "phone=+998 90 000-11-22" \
+  --data-urlencode "specialty=${SPEC_ID}" \
+  --data-urlencode "reason=[test] дедуп ФИО+ДР")
+check_contains "дедуп: редирект с created=0" "${DEDUP#*|}" "created=0"
+check_eq "дедуп: пациентов не прибавилось" "$PT_BEFORE2" \
+  "$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+    "from apps.patients.models import Patient; print(Patient.objects.count())" \
+    2>/dev/null | tail -n1)"
+check_contains "дедуп: сообщение «существующая карточка»" \
+  "$(body "${DEDUP#*|}" "$J_ANON")" \
+  "Найдена существующая карточка"
+
+# регистратор видит заявку с сайта
+login registrar1 registrar12345 "$J_REG"
+check_contains "направления: бейдж «Заявка с сайта»" \
+  "$(body "$BASE/appointments/directions/" "$J_REG")" "Заявка с сайта"
+
+# код заявки: кнопка копирования на странице результата
+check_contains "страница заявки: кнопка «Скопировать код заявки»" \
+  "$REQ_PAGE2" "Скопировать код заявки"
+check_contains "страница заявки: код равен public_id" "$REQ_PAGE2" "$REQ_UUID"
+check_contains "страница: кнопка есть и без баннера" \
+  "$(body "${REQ_LOC%%\?*}" "$J_ANON")" "Скопировать код заявки"
+check_contains "страница: JS-обработчик копирования" "$REQ_PAGE2" "js-copy-code"
+
+# блок «Мои записи» на главной: ввод кода
+LANDING=$(body "$BASE/" "$J_ANON")
+check_contains "лендинг: поле ввода кода" "$LANDING" 'name="code"'
+check_contains "лендинг: кнопка «Открыть»" "$LANDING" "Открыть"
+check_eq "код: канонический UUID → /p/<uuid>/" "$BASE/p/${REQ_UUID}/" \
+  "$(redirect "$BASE/?code=${REQ_UUID}" "$J_ANON")"
+check_eq "код: без дефисов → /p/<uuid>/" "$BASE/p/${REQ_UUID}/" \
+  "$(redirect "$BASE/?code=${REQ_UUID//-/}" "$J_ANON")"
+check_eq "код: в верхнем регистре → /p/<uuid>/" "$BASE/p/${REQ_UUID}/" \
+  "$(redirect "$BASE/?code=$(printf '%s' "$REQ_UUID" | tr '[:lower:]' '[:upper:]')" "$J_ANON")"
+check_eq "код: скопированная ссылка /p/<uuid>/ → /p/<uuid>/" "$BASE/p/${REQ_UUID}/" \
+  "$(curl -s -o /dev/null -w '%{redirect_url}' -G \
+      --data-urlencode "code=$BASE/p/${REQ_UUID}/" "$BASE/")"
+BAD_CODE_PAGE=$(body "$BASE/?code=not-a-code" "$J_ANON")
+check_contains "код: мусор → понятная ошибка" "$BAD_CODE_PAGE" "Код не найден"
+check_contains "код: введённое значение сохранено" "$BAD_CODE_PAGE" 'value="not-a-code"'
+check_contains "код: неизвестный UUID → ошибка" \
+  "$(body "$BASE/?code=00000000-0000-4000-8000-000000000000" "$J_ANON")" \
+  "Код не найден"
+check_eq "вошедший: ?code не перехватывает главную" "200" \
+  "$(status "$BASE/?code=${REQ_UUID}" "$J_REG")"
+
+# карточка врача анониму ведёт на публичную форму
+DOC1_PK=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
+  "from apps.schedule.models import Doctor; print(Doctor.objects.get(user__username='doctor1').pk)" \
+  2>/dev/null | tail -n1)
+check_contains "карточка врача: кнопка ведёт на /request/" \
+  "$(body "$BASE/doctors/${DOC1_PK}/" "$J_ANON")" "/request/?specialty="
 
 echo
 echo "=================================="

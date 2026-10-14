@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Регистратура — запись к врачу{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center text-center mb-4">
+  <div class="col-lg-8">
+    <h1 class="display-5 fw-bold mb-3">Добро пожаловать в регистратуру</h1>
+    <p class="lead text-muted">
+      Запись на приём, электронная очередь и информация о приёме врачей —
+      всё в одном месте.
+    </p>
+    <a href="{% url 'public_request' %}" class="btn btn-success btn-lg px-4 me-2">
+      Записаться онлайн
+    </a>
+    <a href="{% url 'login' %}" class="btn btn-primary btn-lg px-4">
+      Вход в кабинет сотрудника
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 justify-content-center">
+  <div class="col-md-4">
+    <div class="card text-center shadow-sm h-100">
+      <div class="card-body">
+        <div class="display-6 mb-2">👨‍⚕️</div>
+        <h5 class="card-title">Каталог врачей</h5>
+        <p class="text-muted small">
+          Специальности, кабинеты и расписание приёма — выберите врача.
+        </p>
+        <a href="{% url 'doctor_directory' %}" class="btn btn-outline-primary">
+          Открыть каталог
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-center shadow-sm h-100">
+      <div class="card-body">
+        <div class="display-6 mb-2">📺</div>
+        <h5 class="card-title">Монитор очереди</h5>
+        <p class="text-muted small">
+          Номера талонов и кабинеты в зале ожидания — в реальном времени.
+        </p>
+        <a href="{% url 'queue:monitor' %}" class="btn btn-outline-primary">
+          Посмотреть очередь
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-center shadow-sm h-100">
+      <div class="card-body">
+        <div class="display-6 mb-2">🎫</div>
+        <h5 class="card-title">Мои записи</h5>
+        <p class="text-muted small">
+          Вставьте код из заявки или ссылку с талона — откроются ваши
+          записи и номер в очереди.
+        </p>
+        <form method="get" action="{% url 'dashboard' %}" class="text-start">
+          <label for="id-patient-code" class="form-label small text-muted mb-1">
+            Код пациента
+          </label>
+          <div class="input-group input-group-sm">
+            <input type="text" class="form-control" id="id-patient-code"
+                   name="code" value="{{ code|default:'' }}"
+                   placeholder="3c773309-54f2-…"
+                   autocomplete="off" spellcheck="false">
+            <button class="btn btn-primary" type="submit">Открыть</button>
+          </div>
+          {% if code_error %}
+          <div class="text-danger small mt-1">{{ code_error }}</div>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row justify-content-center mt-4">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header">Как записаться к врачу</div>
+      <div class="card-body">
+        <ol class="mb-0">
+          <li>Выберите врача в <a href="{% url 'doctor_directory' %}">каталоге</a> или <a href="{% url 'public_request' %}">заполните заявку</a> — система подберёт свободного специалиста.</li>
+          <li>Регистратор перезвонит и подтвердит время приёма.</li>
+          <li>Получите талон с номером и персональной ссылкой на ваши записи.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

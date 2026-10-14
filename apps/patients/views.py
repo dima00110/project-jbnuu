@@ -1,9 +1,14 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 
 from apps.accounts.decorators import role_required
 from apps.accounts.roles import Roles
+from apps.appointments.models import Appointment, Direction
+from apps.appointments.routing import find_candidates
+from apps.queue.models import QueueTicket
 
 from .forms import InsurancePolicyFormSet, PatientForm, PatientSearchForm
 from .models import Patient
@@ -115,3 +120,58 @@ def patient_deactivate(request, pk):
         )
         return redirect('patients:patient_list')
     return redirect('patients:patient_detail', pk=pk)
+
+
+# --- Публичная страница пациента (без входа) -------------------------------
+
+
+def patient_public(request, public_id):
+    """
+    Персональная страница пациента по секретной ссылке /p/<public_id>/.
+
+    Доступна без аутентификации: пациент узнаёт UUID из талона/СМС.
+    Показывает только данные самого пациента — ФИО, ближайшие и прошлые
+    записи, номер в очереди сегодня. Неизвестный UUID → 404.
+    """
+    patient = get_object_or_404(
+        Patient.objects.filter(is_active=True), public_id=public_id,
+    )
+    today = timezone.localdate()
+
+    # Заявка с сайта (?new=<direction_pk>): баннер + подобранные врачи.
+    # Направление обязано принадлежать этому пациенту — иначе игнорируем.
+    new_direction = None
+    candidates = []
+    raw_new = request.GET.get('new')
+    if raw_new and str(raw_new).isdigit():
+        new_direction = Direction.objects.filter(
+            pk=int(raw_new), patient=patient,
+        ).select_related('specialty').first()
+        if new_direction is not None:
+            candidates = find_candidates(new_direction.specialty)
+
+    upcoming = patient.appointments.filter(
+        Q(visit_date__gte=today) & Q(status__in=Appointment.ACTIVE_STATUSES),
+    ).select_related('doctor__user', 'doctor__specialty', 'doctor__cabinet')[:10]
+
+    past = patient.appointments.filter(
+        ~Q(status__in=Appointment.ACTIVE_STATUSES) | Q(visit_date__lt=today),
+    ).select_related(
+        'doctor__user', 'doctor__specialty', 'doctor__cabinet',
+    ).order_by('-visit_date', '-slot_start')[:10]
+
+    # Талон на сегодня (по записям пациента на сегодня)
+    today_ticket = QueueTicket.objects.filter(
+        appointment__patient=patient, visit_date=today,
+    ).select_related('doctor__user', 'doctor__specialty').first()
+
+    return render(request, 'patients/public.html', {
+        'patient': patient,
+        'upcoming': upcoming,
+        'past': past,
+        'today': today,
+        'today_ticket': today_ticket,
+        'new_direction': new_direction,
+        'candidates': candidates,
+        'card_created': request.GET.get('created') == '1',
+    })

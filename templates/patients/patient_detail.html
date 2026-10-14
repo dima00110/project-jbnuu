@@ -70,6 +70,25 @@
       </div>
     </div>
 
+    <div class="card shadow-sm mb-3">
+      <div class="card-header">Ссылка для пациента</div>
+      <div class="card-body">
+        <p class="text-muted small mb-2">
+          Персональная страница пациента без входа: записи, номер в очереди.
+          Дайте ссылку пациенту (печатается и на талоне).
+        </p>
+        <div class="input-group">
+          <input type="text" class="form-control form-control-sm"
+                 id="patient-public-url" readonly
+                 value="{{ request.scheme }}://{{ request.get_host }}{% url 'patient_public' patient.public_id %}">
+          <button class="btn btn-outline-primary btn-sm" type="button"
+                  onclick="navigator.clipboard.writeText(document.getElementById('patient-public-url').value)">
+            Копировать
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="card shadow-sm">
       <div class="card-header">История визитов</div>
       <div class="card-body">

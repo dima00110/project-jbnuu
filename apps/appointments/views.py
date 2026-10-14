@@ -3,17 +3,19 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.decorators import role_required
 from apps.accounts.roles import Roles
 
 from apps.patients.models import Patient
+from apps.patients.services import find_or_create_patient
 from apps.schedule.models import Doctor, Specialty
 
 from .forms import (
     AppointmentCancelForm, AppointmentCreateForm, AppointmentMoveForm,
-    DirectionCreateForm,
+    DirectionCreateForm, PatientRequestForm,
 )
 from .models import Appointment, Direction
 from .routing import find_candidates
@@ -405,3 +407,54 @@ def direction_cancel(request, pk):
     direction.save(update_fields=['status'])
     messages.success(request, f'Направление {direction.number} отменено.')
     return redirect('appointments:direction_list')
+
+
+# --- Публичная заявка пациента (без входа) ---------------------------------
+
+
+def public_request(request):
+    """
+    Заявка на приём для нового пациента (/request/, без аутентификации).
+
+    Данные формы → карточка пациента (с дедупликацией) + Direction
+    в регистратуру (created_by=NULL — маркер «заявка с сайта»).
+    Успех — редирект на публичную страницу пациента с баннером
+    и подобранными свободными врачами (routing.find_candidates).
+    """
+    initial = {}
+    raw_spec = request.GET.get('specialty')
+    if raw_spec and str(raw_spec).isdigit() and Specialty.objects.filter(
+        pk=raw_spec, doctors__is_active=True,
+    ).exists():
+        initial['specialty'] = raw_spec
+
+    if request.method == 'POST':
+        form = PatientRequestForm(request.POST)
+        # honeypot: бот заполнил скрытое поле — показываем «успех»,
+        # ничего не записывая и не выдавая чужие данные
+        if form.data.get('website'):
+            return render(
+                request, 'appointments/request_form.html',
+                {'form': None, 'sent': True},
+            )
+        if form.is_valid():
+            patient, created = find_or_create_patient(form.cleaned_data)
+            direction = Direction.objects.create(
+                patient=patient,
+                specialty=form.cleaned_data['specialty'],
+                reason=form.cleaned_data['reason'],
+                created_by=None,  # NULL = заявка с сайта
+            )
+            return redirect(
+                f"{reverse('patient_public', args=[patient.public_id])}"
+                f"?new={direction.pk}&created={int(created)}",
+            )
+    else:
+        form = PatientRequestForm(initial=initial)
+
+    return render(request, 'appointments/request_form.html', {
+        'form': form,
+        'specialties': Specialty.objects.filter(
+            doctors__is_active=True,
+        ).distinct().order_by('name'),
+    })

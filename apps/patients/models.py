@@ -1,3 +1,5 @@
+import uuid
+
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
@@ -10,6 +12,12 @@ class Patient(models.Model):
         MALE = 'M', 'Мужской'
         FEMALE = 'F', 'Женский'
 
+    # Публичный идентификатор: по нему пациент открывает свои записи
+    # без входа — /p/<public_id>/. Не связан с PK, не угадать перебором.
+    public_id = models.UUIDField(
+        'Публичный код', unique=True, default=uuid.uuid4, editable=False,
+        db_index=True,
+    )
     last_name = models.CharField('Фамилия', max_length=100)
     first_name = models.CharField('Имя', max_length=100)
     patronymic = models.CharField('Отчество', max_length=100, blank=True)

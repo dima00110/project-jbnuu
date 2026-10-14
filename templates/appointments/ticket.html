@@ -26,6 +26,11 @@
     <div class="text-muted small mt-3">
       Явиться за 10 минут до начала приёма.
     </div>
+    <hr>
+    <div class="text-muted small" style="word-break: break-all;">
+      Мои записи:<br>
+      {{ request.scheme }}://{{ request.get_host }}{% url 'patient_public' appt.patient.public_id %}
+    </div>
   </div>
 </div>
 {% endblock %}

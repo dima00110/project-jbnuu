@@ -42,8 +42,13 @@
         <p class="mb-3">{{ doctor.bio }}</p>
         {% endif %}
 
+        {% if perms.appointments.add_appointment %}
         <a href="{% url 'appointments:booking' %}?doctor={{ doctor.pk }}"
            class="btn btn-success">Записаться на приём</a>
+        {% else %}
+        <a href="{% url 'public_request' %}?specialty={{ doctor.specialty.pk }}"
+           class="btn btn-success">Записаться на приём</a>
+        {% endif %}
         <a href="{% url 'doctor_directory' %}" class="btn btn-outline-secondary">← Все врачи</a>
       </div>
     </div>
