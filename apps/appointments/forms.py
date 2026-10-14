@@ -124,7 +124,7 @@ class PatientRequestForm(forms.Form):
 
     Данные пациента + специальность → создаётся/находится карточка пациента
     и Direction в регистратуру, система подбирает свободных врачей.
-    Уникальность СНИЛС здесь не проверяется — её заменяет дедупликация
+    СНИЛС и email не собираются; дедупликация — по ФИО+дате рождения
     (apps.patients.services.find_or_create_patient).
     """
 
@@ -142,23 +142,12 @@ class PatientRequestForm(forms.Form):
         choices=[('', '—')] + list(Patient.Gender.choices),
         widget=forms.Select(attrs={'class': 'form-select'}),
     )
-    snils = forms.CharField(
-        label='СНИЛС', max_length=14, required=False,
-        help_text='Опционально. Если есть в нашей базе — найдём вашу карточку.',
-        widget=forms.TextInput(attrs={
-            'class': 'form-control', 'placeholder': 'ХХХ-ХХХ-ХХХ ХХ',
-        }),
-    )
     phone = forms.CharField(
         label='Телефон', max_length=32,
         help_text='Позвоним, чтобы подтвердить запись.',
         widget=forms.TextInput(attrs={
             'class': 'form-control', 'placeholder': '+998 90 000-00-00',
         }),
-    )
-    email = forms.EmailField(
-        label='Email', required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control'}),
     )
     specialty = forms.ModelChoiceField(
         label='К какому специалисту хотите записаться',
@@ -203,17 +192,6 @@ class PatientRequestForm(forms.Form):
         if len(digits) < 7:
             raise forms.ValidationError('Телефон слишком короткий.')
         return phone
-
-    def clean_snils(self):
-        snils = (self.cleaned_data.get('snils') or '').strip()
-        if not snils:
-            return snils
-        digits = ''.join(c for c in snils if c.isdigit())
-        if len(digits) != 11:
-            raise forms.ValidationError(
-                'СНИЛС должен содержать 11 цифр (формат ХХХ-ХХХ-ХХХ ХХ).',
-            )
-        return snils
 
 
 class PatientQuickFindForm(forms.Form):

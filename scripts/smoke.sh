@@ -1108,7 +1108,8 @@ Patient.objects.filter(last_name='Сайтов', first_name='Пациент').de
 check_eq "аноним: /request/ → 200" "200" "$(status "$BASE/request/" "$J_ANON")"
 REQ_PAGE=$(body "$BASE/request/" "$J_ANON")
 check_contains "форма: поле ФИО" "$REQ_PAGE" "id_last_name"
-check_contains "форма: поле СНИЛС" "$REQ_PAGE" "id_snils"
+check_eq "форма: поля СНИЛС нет" "0" "$(echo "$REQ_PAGE" | grep -c 'id_snils')"
+check_eq "форма: поля Email нет" "0" "$(echo "$REQ_PAGE" | grep -c 'id_email')"
 check_contains "форма: специальность" "$REQ_PAGE" "id_specialty"
 check_contains "форма: honeypot скрыт" "$REQ_PAGE" "id_website"
 check_contains "навбар: ссылка «Запись»" "$REQ_PAGE" "/request/"
@@ -1125,7 +1126,7 @@ DIR_BEFORE=$(cd "$BASE_DIR" && "$PY" manage.py shell -c \
 BAD=$(post "$BASE/request/" "$J_ANON" \
   --data-urlencode "last_name=Плохой" --data-urlencode "first_name=Клиент" \
   --data-urlencode "birth_date=2031-01-01" --data-urlencode "gender=" \
-  --data-urlencode "snils=123" --data-urlencode "phone=12" \
+  --data-urlencode "phone=12" \
   --data-urlencode "specialty=${SPEC_ID}" --data-urlencode "reason=spam" \
   --data-urlencode "website=")
 check_eq "невалидная заявка → 200 (ошибки на месте)" "200" "${BAD%%|*}"
@@ -1142,7 +1143,7 @@ check_eq "невалидная: направлений не прибавилос
 BAD_HP=$(post "$BASE/request/" "$J_ANON" \
   --data-urlencode "last_name=Бот" --data-urlencode "first_name=Спам" \
   --data-urlencode "birth_date=1990-01-01" --data-urlencode "gender=M" \
-  --data-urlencode "snils=" --data-urlencode "phone=+998 90 000-00-00" \
+  --data-urlencode "phone=+998 90 000-00-00" \
   --data-urlencode "specialty=${SPEC_ID}" --data-urlencode "reason=bot" \
   --data-urlencode "website=http://spam.example")
 check_eq "honeypot: пациентов не прибавилось" "$PT_BEFORE" \
@@ -1159,8 +1160,7 @@ OK=$(post "$BASE/request/" "$J_ANON" \
   --data-urlencode "last_name=Сайтов" --data-urlencode "first_name=Пациент" \
   --data-urlencode "patronymic=Петрович" \
   --data-urlencode "birth_date=1988-11-11" --data-urlencode "gender=M" \
-  --data-urlencode "snils=" --data-urlencode "phone=+998 90 777-88-99" \
-  --data-urlencode "email=" \
+  --data-urlencode "phone=+998 90 777-88-99" \
   --data-urlencode "specialty=${SPEC_ID}" \
   --data-urlencode "reason=[test] заявка с сайта")
 check_eq "валидная заявка → 302" "302" "${OK%%|*}"
@@ -1203,7 +1203,7 @@ DEDUP=$(post "$BASE/request/" "$J_ANON" \
   --data-urlencode "last_name=САЙТОВ" --data-urlencode "first_name=пациЕНТ" \
   --data-urlencode "patronymic=" \
   --data-urlencode "birth_date=1988-11-11" --data-urlencode "gender=M" \
-  --data-urlencode "snils=" --data-urlencode "phone=+998 90 000-11-22" \
+  --data-urlencode "phone=+998 90 000-11-22" \
   --data-urlencode "specialty=${SPEC_ID}" \
   --data-urlencode "reason=[test] дедуп ФИО+ДР")
 check_contains "дедуп: редирект с created=0" "${DEDUP#*|}" "created=0"

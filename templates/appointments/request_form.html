@@ -72,18 +72,6 @@
             </div>
 
             <div class="col-md-6">
-              <label class="form-label" for="id_snils">СНИЛС</label>
-              {{ form.snils }}
-              {% if form.snils.help_text %}<div class="form-text">{{ form.snils.help_text }}</div>{% endif %}
-              {% for e in form.snils.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
-            </div>
-            <div class="col-md-6">
-              <label class="form-label" for="id_email">Email</label>
-              {{ form.email }}
-              {% for e in form.email.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
-            </div>
-
-            <div class="col-md-6">
               <label class="form-label" for="id_specialty">К какому специалисту хотите записаться *</label>
               {{ form.specialty }}
               {% for e in form.specialty.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
